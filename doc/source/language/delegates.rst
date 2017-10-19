@@ -3,9 +3,10 @@
 Delegates (function references)
 ===============================
 
-.. versionadded:: 0.19.0
-   The delegate feature described on this page did not exist
-   prior to kOS 0.19.0.
+.. note::
+    .. versionadded:: 0.19.0
+        The delegate feature described on this page did not exist
+        prior to kOS 0.19.0.
 
 .. contents:: Contents
     :local:
@@ -84,6 +85,7 @@ Here's the full example::
     set aaa to myfunc@. // You don't see any effect just yet from this.
     print aaa:call(1, 2).  // Now you see the number 3 printed,
                            // just like calling myfunc directly.
+
 
 Omitting :CALL
 ~~~~~~~~~~~~~~
@@ -226,6 +228,25 @@ you are trying to solve.  While Kerboscript is mostly an
 some limited concepts of functional programming style are possible through the use
 of these delegates.
 
+Anonymous functions
+-------------------
+
+Kerboscript also allows you to make a Delegate from an
+:ref:`Anonymous function <anonymous_functions>` (see the link
+for the full description of the syntax and its use), as in this
+example below::
+
+    set add_func to { parameter a,b. return a+b. }.
+    // add_func is now a KOSDelegate of the anonymous function.
+
+When using anonymous functions like this, you don't use the '@'
+character because an anonymous function already *is* a Delegate
+to begin with.
+
+It is technically possible, using anonymous functions, to
+actually make an entire program library out of delegates
+rather than normal functions.
+
 lib_enum in KSLib
 -----------------
 
@@ -244,6 +265,24 @@ matches given criteria, and so on.
 
 Advanced topics
 ===============
+
+Can't call dead delegates
+-------------------------
+
+You might store a KOSDelegate in a global variable.
+Global varibles continue existing even after all the programs
+are done and you are back at the terminal interpreter.
+
+This makes it possible to have a (global) variable 
+that contains a KOSDelegate that refers to user program
+code that no longer exists.
+
+But you can't actually call that delegate.
+If you have such a situation, that delegate is
+referred to as "DEAD" and trying to call it will cause an
+error.  You can test for this with the :attr:`KOSDelegate:ISDEAD`
+suffix.
+
 
 .. _kosdelegate_bind:
 
@@ -298,7 +337,7 @@ Note that you can combine the two lines above that looked like this::
 
 into just this::
 
-    local draw_a_to_b is draw_a_to_b@:bind(shipA, shipB).
+    local draw_a_to_b is draw_ship_to_ship@:bind(shipA, shipB).
 
 When you use the at-sign(``@``), you are returning an object of type
 :struct:`KOSDelegate` that can be used in-line right in the expression,
@@ -334,20 +373,6 @@ it is actually a
 `partial function application <https://en.wikipedia.org/wiki/Partial_application>`__.
 and thus doesn't *require* that you limit it to only one parameter at a time.)
 
-Anonymous functions
--------------------
-
-(If you are a beginner programmer, you can skip this paragraph.)
-
-If you are an experienced programmer who knows of a concept
-called "anonymous functions" in which you can create instant
-delegates as just in-line expressions, you should know that this
-feature is not supported in Kerboscript.  All KOSDelegates must
-start as named functions you declare in the usual way.  The
-anonymous function feature may be added in a future release,
-or it might not, depending on how complex it becomes to add it
-to the language syntax.  
-
 Closures
 --------
 
@@ -364,38 +389,44 @@ normally be in :ref:`scope <scope>`.
 Kinds of Delegate (no suffixes)
 ===============================
 
-Under the hood, kOS handles several different kinds of 'functions' and
+Under the hood, kOS handles several different kinds of "functions" and
 methods that aren't actually implemented the same way.  A ``KOSDelegate``
 attempts to hide the details of these differences from the user, but
 one difference in particular still stands out.  In kOS version 0.19.0,
 you cannot reliably make a delegate of a suffix just yet.  (*This is
 intended as a future feature though.  It's been put off because it
-involves decisions that impact the future of the language and once made,
-can't be changed easily.*)
+involves decisions that impact the future of the language and which, once
+made, can't be changed easily.*)
 
 - You **can** make a delegate of a :ref:`user function <user_functions>`
-  implemented in Kerboscript code.::
+  implemented in Kerboscript code.
     
-    function mysquarefunc { parameter a. return a*a. }
-    set x to mysquarefunc@.
-    set y to x:call(5). // y is now 25.
+    ::
+    
+       function mysquarefunc { parameter a. return a*a. }
+       set x to mysquarefunc@.
+       set y to x:call(5). // y is now 25.
 
 - You **can** make a delegate of a built-in function provided by kOS
-  itself, provided it isn't a structure suffix.::
+  itself, provided it isn't a structure suffix.
 
-    set r to round@.
-    set s to sqrt@.
-    print "square root of 7, to the nearest 2 places is: " + r:call(s:call(7), 2).
+    ::
+
+       set r to round@.
+       set s to sqrt@.
+       print "square root of 7, to the nearest 2 places is: " + r:call(s:call(7), 2).
 
 - You **cannot** make a delegate of a suffix of a structure (*yet?*)
-  in Kerboscript.::
+  in Kerboscript.
 
-    //
-    // WON'T WORK, WILL GIVE ERROR:
-    //
-    set altpos to latlng(10,20):altitudeposition@. // altitudeposition is a suffix of geoposition.
-    print "altpos at altitude 1000 is " + altpos:call(1000).
+    ::
+
+       //
+       // WON'T WORK, WILL GIVE ERROR:
+       //
+       set altpos to latlng(10,20):altitudeposition@. // altitudeposition is a suffix of geoposition.
+       print "altpos at altitude 1000 is " + altpos:call(1000).
 
   However, if you like you can make your own user function that is a
-  wrapper around a structure suffix call, and make a delegate of THAT.
+  wrapper around a structure suffix call, and make a delegate of **that**.
 

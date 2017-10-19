@@ -1,6 +1,7 @@
 ﻿using kOS.Safe.Encapsulation;
 using kOS.Safe.Encapsulation.Suffixes;
 using kOS.Suffixed;
+using kOS.Safe.Exceptions;
 using System.Collections.Generic;
 
 namespace kOS.AddOns.InfernalRobotics
@@ -59,39 +60,52 @@ namespace kOS.AddOns.InfernalRobotics
             {
                 //IF IR version is 0.21.4 or below IR API may return null, but it also means that IR API only returns groups for ActiveVessel
                 //so returning the ActiveVessel should work
-                return cg.Vessel != null ? new VesselTarget (cg.Vessel, shared) : new VesselTarget(FlightGlobals.ActiveVessel, shared);
+                return cg.Vessel != null ? VesselTarget.CreateOrGetExisting(cg.Vessel, shared) : VesselTarget.CreateOrGetExisting(FlightGlobals.ActiveVessel, shared);
             } 
             else
-                return new VesselTarget(shared.Vessel, shared); //user should not be able to get here anyway, but to avoid null will return shared.Vessel
+                return VesselTarget.CreateOrGetExisting(shared.Vessel, shared); //user should not be able to get here anyway, but to avoid null will return shared.Vessel
+        }
+
+        public void ThrowIfNotCPUVessel()
+        {
+            VesselTarget vt = GetVessel();
+            if (vt.Vessel.id != shared.Vessel.id)
+                throw new KOSWrongCPUVesselException();
         }
 
         public void MoveRight()
         {
+            ThrowIfNotCPUVessel();
             cg.MoveRight();
         }
 
         public void MoveLeft()
         {
+            ThrowIfNotCPUVessel();
             cg.MoveLeft();
         }
 
         public void MoveCenter()
         {
+            ThrowIfNotCPUVessel();
             cg.MoveCenter();
         }
 
         public void MoveNextPreset()
         {
+            ThrowIfNotCPUVessel();
             cg.MoveNextPreset();
         }
 
         public void MovePrevPreset()
         {
+            ThrowIfNotCPUVessel();
             cg.MovePrevPreset();
         }
 
         public void Stop()
         {
+            ThrowIfNotCPUVessel();
             cg.Stop();
         }
     }

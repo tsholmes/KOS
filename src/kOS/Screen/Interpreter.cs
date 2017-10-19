@@ -6,11 +6,13 @@ using kOS.Safe.Compilation;
 using kOS.Safe.Execution;
 using kOS.Safe.Screen;
 using kOS.Safe.UserIO;
+using kOS.Safe.Persistence;
 
 namespace kOS.Screen
 {
     public class Interpreter : TextEditor, IInterpreter
     {
+        public const string InterpreterName = "interpreter";
         private readonly List<string> commandHistory = new List<string>();
         private int commandHistoryIndex;
         private bool locked;
@@ -139,7 +141,8 @@ namespace kOS.Screen
                     IsCalledFromRun = false
                 };
 
-                List<CodePart> commandParts = Shared.ScriptHandler.Compile("interpreter history", commandHistoryIndex, commandText, "interpreter", options);
+                List<CodePart> commandParts = Shared.ScriptHandler.Compile(new InterpreterPath(this),
+                    commandHistoryIndex, commandText, InterpreterName, options);
                 if (commandParts == null) return;
 
                 var interpreterContext = Shared.Cpu.GetInterpreterContext();
@@ -154,6 +157,15 @@ namespace kOS.Screen
             }
         }
 
+        public bool IsWaitingForCommand()
+        {
+            IProgramContext context = ((CPU)Shared.Cpu).GetInterpreterContext();
+            // If running from a boot script, there will be no interpreter instructions,
+            // only a single OpcodeEOF.  So we check to see if the interpreter is locked,
+            // which is a sign that a sub-program is running.
+            return !locked && context.Program[context.InstructionPointer] is OpcodeEOF;
+        }
+
         public void SetInputLock(bool isLocked)
         {
             locked = isLocked;
@@ -163,7 +175,7 @@ namespace kOS.Screen
 
         public override void Reset()
         {
-            Shared.ScriptHandler.ClearContext("interpreter");
+            Shared.ScriptHandler.ClearContext(InterpreterName);
             commandHistory.Clear();
             commandHistoryIndex = 0;
             base.Reset();
@@ -174,6 +186,26 @@ namespace kOS.Screen
             SaveCursorPos();
             base.PrintAt(textToPrint, row, column);
             RestoreCursorPos();
+        }
+
+        private class InterpreterPath : InternalPath
+        {
+            private Interpreter interpreter;
+
+            public InterpreterPath(Interpreter interpreter) : base()
+            {
+                this.interpreter = interpreter;
+            }
+
+            public override string Line(int line)
+            {
+                return interpreter.GetCommandHistoryAbsolute(line);
+            }
+
+            public override string ToString()
+            {
+                return InterpreterName;
+            }
         }
     }
 }

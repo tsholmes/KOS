@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import sys
 import re
 
 from docutils import nodes
 from docutils.parsers.rst import directives
 
-from sphinx import addnodes
+from sphinx import addnodes, version_info
 from sphinx.roles import XRefRole
 from sphinx.locale import l_, _
 from sphinx.domains import Domain, ObjType, Index
@@ -32,6 +33,7 @@ ks_sig_re = re.compile(r'''
         \)
     )?
 ''', re.VERBOSE)
+ks_keyword_sig_re = re.compile(r'''(?P<object>[a-zA-Z][\w]*)(?:(?:\s+)(?P<params>(?:.+\((?P<args>.+)\))|(?:.+)))?\.?''', re.VERBOSE)
 
 class KOSObject(ObjectDescription):
     def add_target_and_index(self, name, sig, signode):
@@ -55,8 +57,13 @@ class KOSObject(ObjectDescription):
             objects[key] = self.env.docname
         indextext = self.get_index_text(self.objtype, name)
         if indextext:
-            self.indexnode['entries'].append(('single', indextext,
-                                              targetname, ''))
+            # sphinx 1.4.0+ requires 5 elements
+            if version_info > (1, 4, 0, '', 0):
+                self.indexnode['entries'].append(('single', indextext,
+                                                  targetname, '', None))
+            else:
+                self.indexnode['entries'].append(('single', indextext,
+                                                  targetname, ''))
 
 class KOSGlobal(KOSObject):
     doc_field_types = [
@@ -81,7 +88,7 @@ class KOSFunction(KOSObject):
         Field('access', label=l_('Access'), has_arg=False),
         TypedField('parameter', label=l_('Parameters'),
                    names=('param', 'parameter', 'arg', 'argument'),
-                   typerolename='obj', typenames=('paramtype', 'type')),
+                   typerolename='struct', typenames=('paramtype', 'type')),
         Field('returnvalue', label=l_('Returns'), has_arg=False,
               names=('returns', 'return')),
         Field('returntype', label=l_('Return type'), has_arg=False,
@@ -102,6 +109,23 @@ class KOSFunction(KOSObject):
 
     def get_index_text(self, objectname, name):
         return _('{}()'.format(name))
+
+
+class KOSKeyword(KOSObject):
+    doc_field_types = [
+        TypedField('parameter', label=l_('Parameters'),
+                   names=('param', 'parameter', 'arg', 'argument'),
+                   typerolename='struct', typenames=('paramtype', 'type')),
+    ]
+
+    def handle_signature(self, sig, signode):
+        m = ks_keyword_sig_re.match(sig)
+        name = m.group('object')
+        signode += addnodes.desc_name(sig,sig)
+        return name
+
+    def get_index_text(self, objectname, name):
+        return _('{}'.format(name))
 
 class KOSStructure(KOSObject):
     def handle_signature(self, sig, signode):
@@ -130,12 +154,19 @@ class KOSAttribute(KOSObject):
     def handle_signature(self, sig, signode):
         m = ks_sig_re.match(sig)
         name = m.group('object')
+        struct = None  #might override further down
 
         current_struct = self.env.temp_data.get('ks:structure')
         if m.group('prefix') is None:
             if current_struct is not None:
                 struct = current_struct
                 fullname = current_struct + ':' + name
+            else:
+                raise Exception("Attribute name lacks a prefix and isn't " +
+                    "indented inside a structure section.  Problem " +
+                    "occurred at " + self.env.docname + ", line " +
+                     str(self.lineno) + 
+                     ".")
         else:
             struct = m.group('prefix').split(':')[-1]
             fullname = struct + ':' + name
@@ -166,11 +197,19 @@ class KOSMethod(KOSObject):
     def handle_signature(self, sig, signode):
         m = ks_sig_re.match(sig)
         name = m.group('object')
+        struct = None  #might override further down
 
         current_struct = self.env.temp_data.get('ks:structure')
         if m.group('prefix') is None:
             if current_struct is not None:
+                struct = current_struct
                 fullname = current_struct + ':' + name
+            else:
+                raise Exception("Method name lacks a prefix and isn't " +
+                    "indented inside a structure section.  Problem " +
+                    "occurred at " + self.env.docname + ", line " +
+                     str(self.lineno) + 
+                     ".")
         else:
             struct = m.group('prefix').split(':')[-1]
             fullname = struct + ':' + name
@@ -229,6 +268,7 @@ class KOSDomain(Domain):
     object_types = {
         'global'   : ObjType(l_('global'   ), 'global'),
         'function' : ObjType(l_('function' ), 'func'  ),
+        'keyword'  : ObjType(l_('keyword'  ), 'key'   ),
         'structure': ObjType(l_('structure'), 'struct'),
         'attribute': ObjType(l_('attribure'), 'attr'  ),
         'method'   : ObjType(l_('method'   ), 'meth'  ),
@@ -236,6 +276,7 @@ class KOSDomain(Domain):
     directives = {
         'global'   : KOSGlobal,
         'function' : KOSFunction,
+        'keyword'  : KOSKeyword,
         'structure': KOSStructure,
         'attribute': KOSAttribute,
         'method'   : KOSMethod,
@@ -243,6 +284,7 @@ class KOSDomain(Domain):
     roles = {
         'global': KOSXRefRole(),
         'func'  : KOSXRefRole(),
+        'key'   : KOSXRefRole(),
         'struct': KOSXRefRole(),
         'attr'  : KOSAttrXRefRole(),
         'meth'  : KOSAttrXRefRole(),
@@ -260,8 +302,13 @@ class KOSDomain(Domain):
                                     contnode, target + ' ' + objtype)
 
     def get_objects(self):
-        for (typ, name), docname in self.data['objects'].iteritems():
-            yield name, name, typ, docname, name, 1
+        # iteritems() was renamed to items() in python 3
+        if sys.version_info[0] < 3:
+            for (typ, name), docname in self.data['objects'].iteritems():
+                yield name, name, typ, docname, name, 1
+        else:
+            for (typ, name), docname in self.data['objects'].items():
+                yield name, name, typ, docname, name, 1
 
 def setup(app):
     app.add_domain(KOSDomain)

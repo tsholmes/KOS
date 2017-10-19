@@ -9,11 +9,28 @@ This is any sort of planet or moon. To get a variable referring to a Body, you c
     // like "Mun" for example.
     SET MY_VAR TO BODY("name").
 
-Also, all bodies have hard-coded variable names as well. You can use the variable ``Mun`` to mean the same thing as ``BODY("Mun")``.
-
 .. note::
     .. versionchanged:: 0.13
         A Celestial Body is now also an :ref:`Orbitable <orbitable>`, and can use all the terms described for these objects too.
+
+
+Bodies' names are added to the kerboscript language as variable names as well.
+This means you can use the variable ``Mun`` to mean the same thing as ``BODY("Mun")``,
+and the variable ``Kerbin`` to mean the same thing as ``BODY("Kerbin")``, and so on.
+
+.. note::
+    Exception: If you are using a mod that replaces the stock game's planets
+    and moons with new bodies with new names, then there is a chance a body's
+    name will match an existing bound variable name in kOS and we cannot
+    control this.  Therefore if this happens, that body name will NOT become a
+    variable name, so you can only refer to that body with the expression
+    ``BODY(name)``.  (For example, this occurred when Galileo Planet Pack had
+    a planet called "Eta" which has the same name as the bound variable "ETA").
+
+    .. versionchanged:: 1.0.2
+        This behavior was only added in kOS 1.0.2.
+        Using a version of kOS prior to 1.0.2 will cause a name clash and
+        broken behavior if a planet or moon exists that overrides a keyword name.
 
 Predefined Celestial Bodies
 ---------------------------
@@ -56,7 +73,8 @@ All of the main celestial bodies in the game are reserved variable names. The fo
     :attr:`MU`                       :ref:`scalar <scalar>` (:math:`m^3 s^{−2}`)
     :attr:`ATM`                      :struct:`Atmosphere`
     :attr:`ANGULARVEL`               :struct:`Vector` in :ref:`SHIP-RAW <ship-raw>`
-    :attr:`GEOPOSITIONOF`            :struct:`GeoCoordinates` in :ref:`SHIP-RAW <ship-raw>`
+    :meth:`GEOPOSITIONOF`            :struct:`GeoCoordinates` given :ref:`SHIP-RAW <ship-raw>` position vector
+    :meth:`GEOPOSITIONLATLNG`        :struct:`GeoCoordinates` given latitude and longitude values
     :attr:`ALTITUDEOF`               :ref:`scalar <scalar>` (m)
     :attr:`SOIRADIUS`                :ref:`scalar <scalar>` (m)
     :attr:`ROTATIONANGLE`            :ref:`scalar <scalar>` (deg)
@@ -120,9 +138,28 @@ All of the main celestial bodies in the game are reserved variable names. The fo
     congruent with how VESSEL:ANGULARMOMENTUM is expressed, and for
     backward compatibility with older kOS scripts.
 
-.. attribute:: Body:GEOPOSITIONOF
+.. method:: Body:GEOPOSITIONOF(vectorPos)
+
+    :parameter vectorPos: :struct:`Vector` input position in XYZ space.
 
     The geoposition underneath the given vector position.  SHIP:BODY:GEOPOSITIONOF(SHIP:POSITION) should, in principle, give the same thing as SHIP:GEOPOSITION, while SHIP:BODY:GEOPOSITIONOF(SHIP:POSITION + 1000*SHIP:NORTH) would give you the lat/lng of the position 1 kilometer north of you.  Be careful not to confuse this with :GEOPOSITION (no "OF" in the name), which is also a suffix of Body by virtue of the fact that Body is an Orbitable, but it doesn't mean the same thing.
+
+    (Not to be confused with the :attr:`Orbitable:GEOPOSITION` suffix, which ``Body`` inherits
+    from :struct:`Orbitable`, and which gives the position that this body is directly above
+    on the surface *of its parent body*.)
+
+.. method:: Body:GEOPOSITIONLATLNG(latitude, longitude)
+
+    :parameter latitude: :struct:`Scalar` input latitude
+    :parameter longitude: :struct:`Scalar` input longitude
+    :type: :struct:`GeoCoordinates`
+
+    Given a latitude and longitude, this returns a :struct:`GeoCoordinates` structure
+    for that position on this body.
+
+    (Not to be confused with the :attr:`Orbitable:GEOPOSITION` suffix, which ``Body`` inherits
+    from :struct:`Orbitable`, and which gives the position that this body is directly above
+    on the surface *of its parent body*.)
 
 .. attribute:: Body:ALTITUDEOF
 
@@ -134,11 +171,10 @@ All of the main celestial bodies in the game are reserved variable names. The fo
 
 .. attribute:: Body:ROTATIONANGLE
 
-    The rotation angle is the number of degrees between the 
-    :ref:`Solar Prime Vector <solarprimevector>` and the 
+    The rotation angle is the number of degrees between the
+    :ref:`Solar Prime Vector <solarprimevector>` and the
     current positon of the body's prime meridian (body longitude
     of zero).
 
     The value is in constant motion, and once per body's day, its
     ``:rotationangle`` will wrap around through a full 360 degrees.
-

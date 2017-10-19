@@ -37,8 +37,9 @@ namespace kOS.Safe.Encapsulation
 
         private void InitializeSuffixes()
         {
-            AddSuffix("CALL", new VarArgsSuffix<Structure, Structure>(Call));
+            AddSuffix("CALL", new VarArgsSuffix<Structure, Structure>(CallPassingArgs));
             AddSuffix("BIND", new VarArgsSuffix<KOSDelegate, Structure>(Bind));
+            AddSuffix("ISDEAD", new NoArgsSuffix<BooleanValue>(() => (BooleanValue)IsDead()));
         }
 
         public void AddPreBoundArg(Structure arg)
@@ -46,8 +47,10 @@ namespace kOS.Safe.Encapsulation
             PreBoundArgs.Add(arg);
         }
 
-        public Structure Call(params Structure[] args)
+        public Structure CallPassingArgs(params Structure[] args)
         {
+            if (Cpu == null)
+                throw new KOSCannotCallException();
             PushUnderArgs();
             Cpu.PushStack(new KOSArgMarkerType());
             foreach (Structure arg in PreBoundArgs)
@@ -58,7 +61,7 @@ namespace kOS.Safe.Encapsulation
             {
                 Cpu.PushStack(arg);
             }
-            return Call();
+            return CallWithArgsPushedAlready();
         }
 
         /// <summary>
@@ -77,6 +80,8 @@ namespace kOS.Safe.Encapsulation
         /// </summary>
         public void InsertPreBoundArgs()
         {
+            if (Cpu == null)
+                throw new KOSCannotCallException();
             Stack<object> aboveArgs = new Stack<object>();
             object arg = ""; // doesn't matter what it is as long as it's non-null for the while check below.
             while (arg != null && !(arg is KOSArgMarkerType))
@@ -105,7 +110,7 @@ namespace kOS.Safe.Encapsulation
         /// Assuming the args have been pushed onto the stack already, with
         /// the argbottom marker under them, do the call of this delegate.
         /// </summary>
-        public abstract Structure Call();
+        public abstract Structure CallWithArgsPushedAlready();
 
         /// <summary>
         /// If the derivative class needs to put anything on the stack underneath the
@@ -119,6 +124,14 @@ namespace kOS.Safe.Encapsulation
         /// </summary>
         /// <returns>Should return whatever the actual derived type is, not a raw KOSDelegate</returns>
         public abstract KOSDelegate Clone();
+
+        /// <summary>
+        /// Because a delegate can last longer than the program code it's trying to
+        /// jump into, it can be "dead", referring to a stale program that's not there
+        /// anymore.  If that's the case, this should be made to return true.
+        /// </summary>
+        /// <returns><c>true</c> if this instance is dead; otherwise, <c>false</c>.</returns>
+        public abstract bool IsDead();
 
         /// <summary>
         /// This returns a new variant of the delegate that has the first

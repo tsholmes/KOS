@@ -37,6 +37,8 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <WarningLevel>4</WarningLevel>
+    <Optimize>false</Optimize>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="ICSharpCode.SharpZipLib">
@@ -51,10 +53,12 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Binding\SafeBinding.cs" />
+    <Compile Include="Binding\SafeBindingBase.cs" />
     <Compile Include="Binding\BindingAttribute.cs" />
     <Compile Include="Binding\BindingDelgate.cs" />
     <Compile Include="Binding\BoundVariable.cs" />
     <Compile Include="Binding\IBindingManager.cs" />
+    <Compile Include="Callback\IGameEventDispatchManager.cs" />
     <Compile Include="Compilation\Calculator.cs" />
     <Compile Include="Compilation\CalculatorBool.cs" />
     <Compile Include="Compilation\CalculatorScalar.cs" />
@@ -64,6 +68,14 @@
     <Compile Include="Compilation\CompileCache.cs" />
     <Compile Include="Compilation\CompiledObject.cs" />
     <Compile Include="Compilation\CompilerOptions.cs" />
+    <Compile Include="Exceptions\KOSAtmosphereObsoletionException.cs" />
+    <Compile Include="Exceptions\KOSInvalidDelegateType.cs" />
+    <Compile Include="Encapsulation\TerminalInput.cs" />
+    <Compile Include="Exceptions\KOSInvalidTargetException.cs" />
+    <Compile Include="Exceptions\KOSNumberParseException.cs" />
+    <Compile Include="Exceptions\KOSObsoletionException.cs" />
+    <Compile Include="Exceptions\KOSPatchesObsoletionException.cs" />
+    <Compile Include="Exceptions\KOSVolumeOutOfRangeException.cs" />
     <Compile Include="Exceptions\KOSYouShouldNeverSeeThisException.cs" />
     <Compile Include="Compilation\KS\BreakInfo.cs" />
     <Compile Include="Compilation\KS\Compiler.cs" />
@@ -94,7 +106,6 @@
     <Compile Include="Encapsulation\Enumerator.cs" />
     <Compile Include="Encapsulation\IConfig.cs" />
     <Compile Include="Encapsulation\IIndexable.cs" />
-    <Compile Include="Encapsulation\IOperable.cs" />
     <Compile Include="Encapsulation\ISetSuffix.cs" />
     <Compile Include="Encapsulation\ISuffix.cs" />
     <Compile Include="Encapsulation\ISuffixed.cs" />
@@ -130,7 +141,6 @@
     <Compile Include="Exceptions\KOSNotInvokableException.cs" />
     <Compile Include="Exceptions\KOSOnceInvalidHereException.cs" />
     <Compile Include="Exceptions\KOSArgumentMismatchException.cs" />
-    <Compile Include="Exceptions\KOSAtmosphereDeprecationException.cs" />
     <Compile Include="Exceptions\KOSBadJumpException.cs" />
     <Compile Include="Exceptions\KOSBreakInvalidHereException.cs" />
     <Compile Include="Exceptions\KOSDuplicateKeyException.cs" />
@@ -143,13 +153,11 @@
     <Compile Include="Exceptions\KOSCommandInvalidHereException.cs" />
     <Compile Include="Exceptions\KOSCompileException.cs" />
     <Compile Include="Exceptions\KOSBinaryOperandTypeException.cs" />
-    <Compile Include="Exceptions\KOSDeprecationException.cs" />
     <Compile Include="Exceptions\KOSException.cs" />
     <Compile Include="Exceptions\KOSInvalidFieldValueException.cs" />
     <Compile Include="Exceptions\KOSLongTriggerException.cs" />
     <Compile Include="Exceptions\KOSLookupFailException.cs" />
     <Compile Include="Exceptions\KOSParseException.cs" />
-    <Compile Include="Exceptions\KOSPatchesDeprecationException.cs" />
     <Compile Include="Exceptions\KOSPersistenceException.cs" />
     <Compile Include="Exceptions\KOSPreserveInvalidHereException.cs" />
     <Compile Include="Exceptions\KOSReturnInvalidHereException.cs" />
@@ -157,7 +165,6 @@
     <Compile Include="Exceptions\KOSSuffixUseException.cs" />
     <Compile Include="Exceptions\KOSUnavailableAddonException.cs" />
     <Compile Include="Exceptions\KOSUndefinedIdentifierException.cs" />
-    <Compile Include="Exceptions\KOSWaitInValidHereException.cs" />
     <Compile Include="Exceptions\KOSUnaryOperandTypeException.cs" />
     <Compile Include="Exceptions\KOSWrongControlValueTypeException.cs" />
     <Compile Include="Exceptions\KOSWrongCPUVesselException.cs" />
@@ -172,6 +179,7 @@
     <Compile Include="Execution\ProgramContext.cs" />
     <Compile Include="Execution\Stack.cs" />
     <Compile Include="Execution\SurboutineContext.cs" />
+    <Compile Include="Execution\TriggerInfo.cs" />
     <Compile Include="Execution\Variable.cs" />
     <Compile Include="Execution\VariableScope.cs" />
     <Compile Include="Function\Collections\FunctionList.cs" />
@@ -211,6 +219,13 @@
     <Compile Include="Function\Persistence\FunctionOpen.cs" />
     <Compile Include="Function\Persistence\FunctionRename.cs" />
     <Compile Include="Function\Persistence\FunctionSwitch.cs" />
+    <Compile Include="Execution\YiedFinishedThreadedDetector.cs" />
+    <Compile Include="Execution\YieldFinishedCompile.cs" />
+    <Compile Include="Execution\YieldFinishedDetector.cs" />
+    <Compile Include="Execution\YieldFinishedGameTimer.cs" />
+    <Compile Include="Execution\YieldFinishedGetChar.cs" />
+    <Compile Include="Execution\YieldFinishedNextTick.cs" />
+    <Compile Include="Function\FunctionAttribute.cs" />
     <Compile Include="Function\SafeFunctionBase.cs" />
     <Compile Include="Function\FunctionManager.cs" />
     <Compile Include="Function\IFunctionManager.cs" />
@@ -247,8 +262,9 @@
     <Compile Include="Screen\ScreenSnapshot.cs" />
     <Compile Include="Screen\SubBuffer.cs" />
     <Compile Include="Screen\TextEditor.cs" />
-    <Compile Include="SharedObjects.cs" />
+    <Compile Include="Sound\IProceduralSoundWave.cs" />
     <Compile Include="Sound\ISoundMaker.cs" />
+    <Compile Include="Sound\IVoice.cs" />
     <Compile Include="UpdateHandler.cs" />
     <Compile Include="UserIO\UnicodeCommand.cs" />
     <Compile Include="Utilities\AssemblyWalkAttribute.cs" />
@@ -261,7 +277,7 @@
     <Compile Include="Utilities\SafeHouse.cs" />
     <Compile Include="Utilities\Flushable.cs" />
     <Compile Include="Utilities\kOSKeys.cs" />
-    <Compile Include="Utilities\Math.cs" />
+    <Compile Include="Utilities\kosMath.cs" />
     <Compile Include="Utilities\TickGen.cs" />
     <Compile Include="Encapsulation\QueueValue.cs" />
     <Compile Include="Encapsulation\StackValue.cs" />
@@ -277,11 +293,34 @@
     <Compile Include="Serialization\Dump.cs" />
     <Compile Include="Serialization\DumpWithHeader.cs" />
     <Compile Include="Serialization\SerializableStructure.cs" />
-    <Compile Include="Encapsulation\ISerializableValue.cs" />
     <Compile Include="Persistence\FileContent.cs" />
-    <Compile Include="Encapsulation\VolumeFile.cs" />
-    <Compile Include="Encapsulation\ArchiveFile.cs" />
-    <Compile Include="Encapsulation\HarddiskFile.cs" />
+    <Compile Include="Encapsulation\PrimitiveStructure.cs" />
+    <Compile Include="Communication\Connection.cs" />
+    <Compile Include="Communication\CurrentTimeProvider.cs" />
+    <Compile Include="Communication\BaseMessage.cs" />
+    <Compile Include="Serialization\IDumper.cs" />
+    <Compile Include="Communication\GenericMessageQueue.cs" />
+    <Compile Include="Exceptions\KOSCommunicationException.cs" />
+    <Compile Include="Encapsulation\UniqueSetValue.cs" />
+    <Compile Include="Persistence\GlobalPath.cs" />
+    <Compile Include="Persistence\VolumePath.cs" />
+    <Compile Include="Exceptions\KOSInvalidPathException.cs" />
+    <Compile Include="Persistence\ArchiveDirectory.cs" />
+    <Compile Include="Persistence\HarddiskDirectory.cs" />
+    <Compile Include="Persistence\VolumeDirectory.cs" />
+    <Compile Include="Persistence\VolumeItem.cs" />
+    <Compile Include="Persistence\ArchiveFile.cs" />
+    <Compile Include="Persistence\HarddiskFile.cs" />
+    <Compile Include="Persistence\VolumeFile.cs" />
+    <Compile Include="Serialization\IHasSafeSharedObjects.cs" />
+    <Compile Include="SafeSharedObjects.cs" />
+    <Compile Include="Persistence\PathValue.cs" />
+    <Compile Include="Execution\InternalPath.cs" />
+    <Compile Include="Exceptions\KOSCannotCallException.cs" />
+    <Compile Include="Encapsulation\NoDelegate.cs" />
+    <Compile Include="Encapsulation\Suffixes\ThreeArgsSuffix.cs" />
+    <Compile Include="Exceptions\KOSTermWidthObsoletionException.cs" />
+    <Compile Include="Execution\IPopContextNotifyee.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Compilation\CompiledObject-doc.md" />
@@ -294,7 +333,6 @@
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
-  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
     <PostBuildEvent Condition=" '$(OS)' == 'Unix' ">
@@ -313,5 +351,6 @@
   <Target Name="AfterBuild">
   </Target>
   -->
+  <ItemGroup />
   <ItemGroup />
 </Project>

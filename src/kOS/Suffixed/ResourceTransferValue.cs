@@ -287,6 +287,7 @@ namespace kOS.Suffixed
 
         private void MarkFailed(string message)
         {
+            SafeHouse.Logger.LogError(message);
             StatusMessage = message;
             Status = TransferManager.TransferStatus.Failed;
         }
@@ -300,14 +301,24 @@ namespace kOS.Suffixed
 
         private double CalculateAvailableSpace(IEnumerable<global::Part> parts)
         {
-            var resources = parts.SelectMany(p => p.Resources.GetAll(resourceInfo.id));
+            var resources = new List<PartResource>();
+            // GetAll no longer returns a list, but instead fills an existing list
+            foreach (var part in parts)
+            {
+                part.Resources.GetAll(resources, resourceInfo.id);
+            }
             var toReturn =  resources.Sum(r => r.maxAmount - r.amount);
             return toReturn;
         }
 
         private double CalculateAvailableResource(IEnumerable<global::Part> fromParts)
         {
-            var resources = fromParts.SelectMany(p => p.Resources.GetAll(resourceInfo.id));
+            var resources = new List<PartResource>();
+            // GetAll no longer returns a list, but instead fills an existing list
+            foreach (var part in fromParts)
+            {
+                part.Resources.GetAll(resources, resourceInfo.id);
+            }
             var toReturn = resources.Sum(r => r.amount);
             return toReturn;
         }
@@ -376,6 +387,8 @@ namespace kOS.Suffixed
         /// <returns>either the vessel id that is common to all parts, or null</returns>
         private Guid? GetVesselId(IList<global::Part> parts)
         {
+            if (parts.Count == 0)
+                return null;
             var vessel = parts[0].vessel;
             if (parts.All(p => p.vessel == vessel)) return vessel.id;
 

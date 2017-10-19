@@ -7,6 +7,16 @@ Cooked Control
     :local:
     :depth: 1
 
+.. note::
+
+    It is possible for more than one processor part to control the cooked
+    steering methods at any given time.  Whichever processor is the last to
+    update the value of the given control will take priority.
+
+    .. versionchanged:: v1.1.3
+        kOS no longer throws an error if multiple parts attempt to set the value
+        of the same control.
+
 For more information, check out the documentation for the :struct:`SteeringManager` structure.
 
 In this style of controlling the craft, you do not steer the craft directly, but instead select a goal direction and let kOS pick the way to steer toward that goal. This method of controlling the craft consists primarily of the following two commands:
@@ -26,15 +36,18 @@ The special LOCK variables for cooked steering
 
 .. warning::
 
-    You cannot ``WAIT`` during the execution of the expression in a
+    Do not use both ``SAS`` and ``lock steering`` at the same time.
+    See the :ref:`warning below<locksteeringsaswarning>`.
+
+.. warning::
+
+    It's a very bad idea to``WAIT`` during the execution of the expression in a
     LOCK THROTTLE.  See the note in the next section below.
 
 .. _LOCK STEERING:
-.. object:: LOCK STEERING TO expression. 
+.. object:: LOCK STEERING TO expression.
 
-   This sets the direction **kOS** should point the ship where *expression* is a :struct:`Vector` or a :ref:`Direction <direction>` created from a :ref:`Rotation <rotation>` or :ref:`Heading <heading>`:
-
-    :ref:`Rotation <rotation>`
+    This sets the direction **kOS** should point the ship where *expression* is a :struct:`Vector` or a :ref:`Direction <direction>` created from a :ref:`Rotation <rotation>` or :ref:`Heading <heading>`:
 
         A Rotation expressed as ``R(pitch,yaw,roll)``. Note that pitch, yaw and roll are not based on the horizon, but based on an internal coordinate system used by **KSP** that is hard to use. Thankfully, you can force the rotation into a sensible frame of reference by adding a rotation to a known direction first.
 
@@ -68,13 +81,23 @@ The special LOCK variables for cooked steering
 
             LOCK STEERING TO VCRS(SHIP:VELOCITY:ORBIT, BODY:POSITION).
 
+    ``"kill"`` string
+
+        Steering may also be locked to the special string value of ``"kill"``
+        which tells the steering manager to attempt to stop any vessel rotation,
+        much like the stock SAS's stability assist mode.
+
+
 Like all ``LOCK`` expressions, the steering and throttle continually update on their own when using this style of control. If you lock your steering to velocity, then as your velocity changes, your steering will change to match it. Unlike with other ``LOCK`` expressions, the steering and throttle are special in that the lock expression gets executed automatically all the time in the background, while other ``LOCK`` expressions only get executed when you try to read the value of the variable. The reason is that the **kOS** computer is constantly querying the lock expression multiple times per second as it adjusts the steering and throttle in the background.
 
+.. _locksteeringsaswarning:
 .. warning::
 
-    You cannot ``WAIT`` during the execution of the expression in a
-    LOCK STEERING.  See the note in the next section below.
-
+    **About** ``lock steering`` **and** ``SAS`` **:**  While kOS had previously supported
+    enabling SAS at the same time as locking steering, this functionality broke
+    when the underlying KSP method was changed in a version upgrade.  It is our
+    hope to evenentually restore this functionality.  Please check github issue
+    `#2117 <https://github.com/KSP-KOS/KOS/issues/2117>`_ for updates.
 
 .. _LOCK WHEELTHROTTLE:
 .. object:: LOCK WHEELTHROTTLE TO expression. // value range [-1.0 .. 1.0]
@@ -101,7 +124,7 @@ Like all ``LOCK`` expressions, the steering and throttle continually update on t
 
 .. warning::
 
-    You cannot ``WAIT`` during the execution of the expression in a
+    It's a very bad idea to ``WAIT`` during the execution of the expression in a
     LOCK WHEELTHROTTLE.  See the note in the next section below.
 
 .. _LOCK WHEELSTEERING:
@@ -138,7 +161,7 @@ Like all ``LOCK`` expressions, the steering and throttle continually update on t
    **A warning about WHEELSTEERING and vertically mounted probe cores**:
 
    If you built your rover in such a way that the probe core controlling it
-   is stack-mounted facing up at the sky when the rover is driving, that 
+   is stack-mounted facing up at the sky when the rover is driving, that
    will confuse the ``lock WHEELSTEERING`` cooked control mechanism.  This
    is a common building pattern for KSP players and it seems to work okay
    when driving manually, but when driving by a kOS script, the fact that
@@ -157,35 +180,41 @@ Like all ``LOCK`` expressions, the steering and throttle continually update on t
 
 .. warning::
 
-    You cannot ``WAIT`` during the execution of the expression in a
+    It's a very bad idea to ``WAIT`` during the execution of the expression in a
     LOCK WHEELSTEERING.  See the note in the next section below.
 
 
-Cannot 'WAIT' during cooked control calculation
------------------------------------------------
+Don't 'WAIT' during cooked control calculation
+----------------------------------------------
 
 Be aware that because LOCK THROTTLE, LOCK STEERING, LOCK
-WHEELTHROTTLE, and LOCK WHEELSTEERING cause your expression
+WHEELTHROTTLE, and LOCK WHEELSTEERING are actually
+:ref:`triggers <triggers>` that cause your expression
 to be calculated every single physics update tick behind
-the scenes, you cannot execute a ``WAIT`` command during
-the evaluation of the value used in them.
+the scenes, you should not execute a ``WAIT`` command
+in the code that performs the evaluation of the value
+used in them, as that will effectively cheat the entire
+script out of the full execution speed it deserves.
 
 For example, if you attempt this::
 
     function get_throttle {
-	wait 1.  // this line won't work.
-	return 0.5.
+        wait 0.001.  // this line is a bad idea.
+        return 0.5.
     }
     lock throttle to get_throttle().
 
-Then the ``WAIT`` command won't work.  You can't make the
-system pause execution while it's trying to run the
-expression that tells it what to do 25 times a second.
-
-The entire expression that you LOCK any of the four cooked
-controls to must execute and finish quickly enough that it can
-be called 25 times a second (on typical default game settings
-that's how often the steering manager will run your expression).
+Then kOS will attempt to call the ``WAIT`` command *every single*
+update, as the kOS system keeps trying to re-run the
+``lock throttle`` expression to learn what you want the new
+throttle value to be. This will starve your script of the
+CPU time it deserves, having the effect of running the
+lock function every-other-tick, and the rest of your code
+every-other-tick on the ticks in-between.  (When the system
+hits the wait inside the throttle expression, it will stop
+there, not resuming until the next update, effectively meaning
+it doesn't get around to running any of your main-line code
+until the next tick.)
 
 Normally when you use a LOCK command, the expression is only evaluated
 when it needs to be by some other part of the script that is trying
@@ -211,11 +240,11 @@ When the program ends, these automatically unlock as well, which means that to c
 Tuning cooked steering
 ----------------------
 
-.. versionadded:: 0.18.0
-
-    Version 0.18 of kOS completely gutted the internals of the old steering
-    system and replaced them with the system described below.  Anything
-    said below this point is pertinent to version 0.18 and higher only.
+.. note::
+    .. versionadded:: 0.18.0
+        This version of kOS completely gutted the internals of the old steering
+        system and replaced them with the system described below.  Anything
+        said below this point is pertinent to version 0.18 and higher only.
 
 While cooked steering tries to come balanced to perform decently without user
 interaction, there are some instances where you may need to help tune the

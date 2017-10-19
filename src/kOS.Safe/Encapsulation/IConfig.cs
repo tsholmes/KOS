@@ -4,12 +4,11 @@ using kOS.Safe.Encapsulation.Suffixes;
 
 namespace kOS.Safe.Encapsulation
 {
-    public interface IConfig: ISuffixed, IOperable
+    public interface IConfig: ISuffixed
     {
         int InstructionsPerUpdate { get; set; }
         bool UseCompressedPersistence { get; set; }
         bool ShowStatistics { get; set; }
-        bool EnableRTIntegration { get; set; }
         bool StartOnArchive { get; set; }
         bool ObeyHideUI { get; set; }
         bool EnableSafeMode { get; set; }
@@ -17,8 +16,12 @@ namespace kOS.Safe.Encapsulation
         bool EnableTelnet { get; set; }
         int TelnetPort { get; set; }
         bool AudibleExceptions { get; set; }
-        bool TelnetLoopback { get; set; }
+        string TelnetIPAddrString { get; set; }
         bool UseBlizzyToolbarOnly { get; set; }
+        int TerminalFontDefaultSize {get; set; }
+        string TerminalFontName {get; set; }
+        double TerminalBrightness {get; set; }
+
 
         /// <summary>
         /// Return the moment in time when the most recent change to any of the

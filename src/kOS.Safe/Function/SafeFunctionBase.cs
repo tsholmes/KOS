@@ -56,7 +56,7 @@ namespace kOS.Safe.Function
             UsesAutoReturn = true;
         }
 
-        public abstract void Execute(SharedObjects shared);
+        public abstract void Execute(SafeSharedObjects shared);
 
         protected double GetDouble(object argument)
         {
@@ -101,7 +101,7 @@ namespace kOS.Safe.Function
         /// If the assert fails, an exception is thrown.
         /// </summary>
         /// <param name="shared"></param>
-        protected void AssertArgBottomAndConsume(SharedObjects shared)
+        protected void AssertArgBottomAndConsume(SafeSharedObjects shared)
         {
             object shouldBeBottom = shared.Cpu.PopStack();
             if (shouldBeBottom != null && shouldBeBottom.GetType() == OpcodeCall.ArgMarkerType)
@@ -116,7 +116,7 @@ namespace kOS.Safe.Function
         /// </summary>
         /// <param name="shared"></param>
         /// <returns>Number of args as yet unpopped.  returns zero if there are no args, or -1 if there's a bug and the argstart marker is missing.</returns>
-        protected int CountRemainingArgs(SharedObjects shared)
+        protected int CountRemainingArgs(SafeSharedObjects shared)
         {
             int depth = 0;
             bool found = false;
@@ -141,7 +141,7 @@ namespace kOS.Safe.Function
         /// is, it will throw the appropriate error.
         /// </summary>
         /// <returns></returns>
-        protected object PopValueAssert(SharedObjects shared, bool barewordOkay = false)
+        protected object PopValueAssert(SafeSharedObjects shared, bool barewordOkay = false)
         {
             object returnValue = shared.Cpu.PopValue(barewordOkay);
             if (returnValue != null && returnValue.GetType() == OpcodeCall.ArgMarkerType)
@@ -155,7 +155,7 @@ namespace kOS.Safe.Function
         /// is, it will throw the appropriate error.
         /// </summary>
         /// <returns></returns>
-        protected object PopStackAssert(SharedObjects shared)
+        protected object PopStackAssert(SafeSharedObjects shared)
         {
             object returnValue = shared.Cpu.PopStack();
             if (returnValue != null && returnValue.GetType() == OpcodeCall.ArgMarkerType)
@@ -168,7 +168,7 @@ namespace kOS.Safe.Function
         /// into a Structure to be sure, so it won't return primitives.
         /// </summary>
         /// <returns>value after coercion into a kOS Structure</returns>
-        protected Structure PopStructureAssertEncapsulated(SharedObjects shared, bool barewordOkay = false)
+        protected Structure PopStructureAssertEncapsulated(SafeSharedObjects shared, bool barewordOkay = false)
         {
             object returnValue = PopValueAssert(shared, barewordOkay);
             return Structure.FromPrimitiveWithAssert(returnValue);

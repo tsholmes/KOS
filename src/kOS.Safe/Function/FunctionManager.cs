@@ -6,14 +6,14 @@ using System.Reflection;
 
 namespace kOS.Safe.Function
 {
-    [AssemblyWalk(AttributeType = typeof(FunctionAttribute), StaticRegisterMethod = "RegisterMethod")]
+    [AssemblyWalk(AttributeType = typeof(FunctionAttribute), InherritedType = typeof(SafeFunctionBase), StaticRegisterMethod = "RegisterMethod")]
     public class FunctionManager : IFunctionManager
     {
-        private readonly SharedObjects shared;
+        private readonly SafeSharedObjects shared;
         private Dictionary<string, SafeFunctionBase> functions;
         private static readonly Dictionary<FunctionAttribute, Type> rawAttributes = new Dictionary<FunctionAttribute, Type>();
 
-        public FunctionManager(SharedObjects shared)
+        public FunctionManager(SafeSharedObjects shared)
         {
             this.shared = shared;
             Load();
@@ -33,31 +33,6 @@ namespace kOS.Safe.Function
                     {
                         functions.Add(functionName, (SafeFunctionBase)functionObject);
                     }
-                }
-            }
-        }
-
-        public static void WalkAssemblies()
-        {
-            rawAttributes.Clear();
-            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                if (!assembly.GlobalAssemblyCache)
-                {
-                    WalkAssembly(assembly);
-                }
-            }
-        }
-
-        public static void WalkAssembly(Assembly assembly)
-        {
-            foreach (Type type in assembly.GetTypes())
-            {
-                var attr = (FunctionAttribute)type.GetCustomAttributes(typeof(FunctionAttribute), true).FirstOrDefault();
-                if (attr == null) continue;
-                if (!rawAttributes.ContainsKey(attr))
-                {
-                    rawAttributes.Add(attr, type);
                 }
             }
         }

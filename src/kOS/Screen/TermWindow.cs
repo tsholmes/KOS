@@ -7,6 +7,8 @@ using kOS.Safe.Screen;
 using kOS.Module;
 using kOS.UserIO;
 using kOS.Safe.UserIO;
+using KSP.UI.Dialogs;
+using kOS.Safe.Utilities;
 
 namespace kOS.Screen
 {
@@ -14,22 +16,40 @@ namespace kOS.Screen
     public class TermWindow : KOSManagedWindow , ITermWindow
     {
         private const string CONTROL_LOCKOUT = "kOSTerminal";
-        private const int FONTIMAGE_CHARS_PER_ROW = 16;
-        
-        private static readonly string root = KSPUtil.ApplicationRootPath.Replace("\\", "/");
+
+        /// <summary>
+        /// Set to true only when compiling a version specifically for the purpose
+        /// of debugging the use of international Unicode chars on a US-market
+        /// keyboard that cannot type characters above ascii 127.  (The "alt-NNNN" method
+        /// doesn't work in the terminal so you need to actually physically have the keys
+        /// on the keyboard to type the letters.  This turns on a mapping of a few of
+        /// the lesser used ASCII values to some other keys > 127.  This mapping
+        /// will be very wrong to publish in a release, or even to use in a normal
+        /// DEBUG compile (which is why it's not triggering on the DEBUG flag).
+        /// ONLY set to true for testing this one feature, never for anything else.)
+        /// 
+        /// NOTE:  The mapping is only implemented for the in-game terminal, NOT for the
+        /// telnet terminal.  This is because (presumably) the telnet terminal has other
+        /// ways to type these characters (i.e. Putty can obey the ALT-numberpad technique)
+        /// and doesn't need this hack-y test.
+        /// </summary>
+        private const bool DebugInternational = false;
+
+        private static string root;
         private static readonly Color color = new Color(1, 1, 1, 1); // opaque window color when focused
         private static readonly Color colorAlpha = new Color(1f, 1f, 1f, 0.8f); // slightly less opaque window color when not focused.
         private static readonly Color bgColor = new Color(0.0f, 0.0f, 0.0f, 1.0f); // black background of terminal
         private static readonly Color textColor = new Color(0.4f, 1.0f, 0.2f, 1.0f); // font color on terminal
         private static readonly Color textColorOff = new Color(0.8f, 0.8f, 0.8f, 0.7f); // font color when power starved.
         private static readonly Color textColorOffAlpha = new Color(0.8f, 0.8f, 0.8f, 0.8f); // font color when power starved and not focused.
-        private Rect closeButtonRect = new Rect(0, 0, 0, 0); // will be resized later.        
-        private Rect resizeButtonCoords = new Rect(0,0,0,0); // will be resized later.
+        private Rect closeButtonRect;
+        private Rect resizeButtonCoords;
         private GUIStyle tinyToggleStyle;
         private Vector2 resizeOldSize;
         private bool resizeMouseDown;
         private int formerCharPixelHeight;
         private int formerCharPixelWidth;
+        private int postponedCharPixelHeight;
         
         private bool consumeEvent;
         private bool fontGotResized;
@@ -37,14 +57,27 @@ namespace kOS.Screen
         
         private bool collapseFastBeepsToOneBeep = false; // This is a setting we might want to fiddle with depending on opinion.
 
-        private KeyBinding rememberThrottleCutoffKey;
-        private KeyBinding rememberThrottleFullKey;
-
         private bool allTexturesFound = true;
-        private CameraManager cameraManager;
         private float cursorBlinkTime;
-        private Texture2D fontImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
-        private Texture2D [] fontArray;
+
+        private Font font;
+        private int fontSize;
+        private string[] tryFontNames = {
+            "User pick Goes Here",  // overwrite this first one with the user selection - the rest are a fallback just in case
+            "Consolas Bold",        // typical Windows good programming font
+            "Consolas",
+            "Monaco Bold",          // typical Mac good programming font
+            "Monaco",
+            "Liberation Mono Bold", // typical Linux good programming font
+            "Liberation Mono",
+            "Courier New Bold",     // The Courier ones are ugly fallbacks just in case.
+            "Courier Bold",
+            "Courier New",
+            "Courier",
+            "Arial"                 // very bad, proportional, but guaranteed to exist in Unity no matter what.
+        };
+        private GUISkin terminalLetterSkin;
+            
         private bool isLocked;
         /// <summary>How long blinks should last for, for various blinking needs</summary>
         private readonly TimeSpan blinkDuration = TimeSpan.FromMilliseconds(150);
@@ -58,15 +91,18 @@ namespace kOS.Screen
         /// <summary>Telnet repaints happen less often than Update()s.  Not every Update() has a telnet repaint happening.
         /// This tells you whether there was one this update.</summary>
         private bool telnetsGotRepainted;
-        
-        private Texture2D terminalImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
-        private Texture2D terminalFrameImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
-        private Texture2D terminalFrameActiveImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
-        private Texture2D resizeButtonImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
-        private Texture2D networkZigZagImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
-        private Texture2D brightnessButtonImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
-        private Texture2D fontWidthButtonImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
-        private Texture2D fontHeightButtonImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
+
+        private Texture2D terminalImage;
+        private Texture2D terminalFrameImage;
+        private Texture2D terminalFrameActiveImage;
+        private GUIStyle terminalImageStyle;
+        private GUIStyle terminalFrameStyle;
+        private GUIStyle terminalFrameActiveStyle;
+
+        private Texture2D resizeButtonImage;
+        private Texture2D networkZigZagImage;
+        private Texture2D brightnessButtonImage;
+        private Texture2D fontHeightButtonImage;
         private WWW beepURL;
         private AudioSource beepSource;
         private int guiTerminalBeepsPending;
@@ -75,7 +111,7 @@ namespace kOS.Screen
         private KOSTextEditPopup popupEditor;
 
         // data stored per telnet client attached:
-        private readonly List<TelnetSingletonServer> telnets; // support exists for more than one telnet client to be attached to the same terminal, thus this is a list.
+        private volatile List<TelnetSingletonServer> telnets; // support exists for more than one telnet client to be attached to the same terminal, thus this is a list.
         private readonly Dictionary<TelnetSingletonServer, IScreenSnapShot> prevTelnetScreens;
         
         private ExpectNextChar inputExpected = ExpectNextChar.NORMAL;
@@ -90,7 +126,8 @@ namespace kOS.Screen
         private GUISkin customSkin;
         
         private bool uiGloballyHidden = false;
-        
+
+        private Sound.SoundMaker soundMaker;        
 
         public TermWindow()
         {
@@ -104,18 +141,32 @@ namespace kOS.Screen
 
         public void Awake()
         {
+            // set dummy rectangles
+            closeButtonRect = new Rect(0, 0, 0, 0); // will be resized later.
+            resizeButtonCoords = new Rect(0, 0, 0, 0); // will be resized later.
+
+            // Load dummy textures
+            terminalImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
+            terminalFrameImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
+            terminalFrameActiveImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
+            resizeButtonImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
+            networkZigZagImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
+            brightnessButtonImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
+            fontHeightButtonImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
+
+            root = KSPUtil.ApplicationRootPath.Replace("\\", "/");
             LoadTexture("GameData/kOS/GFX/monitor_minimal.png", ref terminalImage);
             LoadTexture("GameData/kOS/GFX/monitor_minimal_frame.png", ref terminalFrameImage);
             LoadTexture("GameData/kOS/GFX/monitor_minimal_frame_active.png", ref terminalFrameActiveImage);
             LoadTexture("GameData/kOS/GFX/resize-button.png", ref resizeButtonImage);
             LoadTexture("GameData/kOS/GFX/network-zigzag.png", ref networkZigZagImage);
             LoadTexture("GameData/kOS/GFX/brightness-button.png", ref brightnessButtonImage);
-            LoadTexture("GameData/kOS/GFX/font-width-button.png", ref fontWidthButtonImage);
             LoadTexture("GameData/kOS/GFX/font-height-button.png", ref fontHeightButtonImage);
-            LoadTexture("GameData/kOS/GFX/font_sml.png", ref fontImage);
-            
-            LoadFontArray();
-            
+
+            terminalImageStyle = Create9SliceStyle(terminalImage);
+            terminalFrameStyle = Create9SliceStyle(terminalFrameImage);
+            terminalFrameActiveStyle = Create9SliceStyle(terminalFrameActiveImage);
+
             LoadAudio();
             
             tinyToggleStyle = new GUIStyle(HighLogic.Skin.toggle)
@@ -123,79 +174,76 @@ namespace kOS.Screen
                 fontSize = 10
             };
 
-            var gObj = new GameObject( "texteditPopup", typeof(KOSTextEditPopup) );
-            DontDestroyOnLoad(gObj);
-            popupEditor = (KOSTextEditPopup)gObj.GetComponent(typeof(KOSTextEditPopup));
+            popupEditor = gameObject.AddComponent<KOSTextEditPopup>();
             popupEditor.SetUniqueId(UniqueId + 5);
             
             customSkin = BuildPanelSkin();
+            terminalLetterSkin = BuildPanelSkin();
 
             GameEvents.onHideUI.Add (OnHideUI);
-			GameEvents.onShowUI.Add (OnShowUI);
+            GameEvents.onShowUI.Add (OnShowUI);
+
+            soundMaker = gameObject.AddComponent<Sound.SoundMaker>();
+        }
+
+
+        /// <summary>
+        /// Unity lacks gui styles for GUI.DrawTexture(), so to make it do
+        /// 9-slice stretching, we have to draw the 9slice image as a GUI.Label.
+        /// But GUI.Labels that render a Texture2D instead of text, won't stretch\
+        /// larger than the size of the image file no matter what you do (only smaller).
+        /// So to make it stretch the image in a label, the image has to be implemented
+        /// as part of the label's background defined in the GUIStyle insteade of as a
+        /// normal image element.  This sets up that style, which you can then render
+        /// by making a GUILabel use this style and have dummy empty string content.
+        /// </summary>
+        /// <returns>The slice style.</returns>
+        /// <param name="fromTexture">From texture.</param>
+        private GUIStyle Create9SliceStyle(Texture2D fromTexture)
+        {
+            GUIStyle style = new GUIStyle();
+            style.normal.background = fromTexture;
+            style.border = new RectOffset(10, 10, 10, 10);
+            style.stretchWidth = true;
+            style.stretchHeight = true;
+            return style;
         }
 
         public void OnDestroy()
         {
+            Unlock();
             GameEvents.onHideUI.Remove(OnHideUI);
             GameEvents.onShowUI.Remove(OnShowUI);
         }
         
-        private void LoadFontArray()
+        public kOS.Safe.Sound.ISoundMaker GetSoundMaker()
         {
-            // Calculate image size from the presumption that it is a hardcoded number of char
-            // pictures wide and that each image is square.
-            // Then calculate everything else dynamically from that so that
-            // you can experiment with swapping in different font image files and the code
-            // will still work without a recompile:
-            int charSourceSize = fontImage.width / FONTIMAGE_CHARS_PER_ROW;
-            int numRows = fontImage.width / charSourceSize;
-            int numCharImages = numRows * FONTIMAGE_CHARS_PER_ROW;
-            
-            // Make it hold all possible ASCII values even though many will be blank pictures:
-            fontArray = new Texture2D[numCharImages];
-            
-            for (int i = 0 ; i < numCharImages ; ++i)
-            {
-                // TextureFormat cannot be DXT1 or DXT5 if you want to ever perform a
-                // SetPixel on the texture (which we do).  So we start it off as a ARGB32
-                // first, long enough to perform the SetPixel call, then compress it
-                // afterward into a DXT5:
-                Texture2D charImage = new Texture2D(charSourceSize, charSourceSize, TextureFormat.ARGB32, false);
-
-                int tx = i % FONTIMAGE_CHARS_PER_ROW;
-                int ty = i / FONTIMAGE_CHARS_PER_ROW;
-                
-                // While Unity uses the convention of upside down textures common in
-                // 3D (2D images put orgin at upper-left, 3D uses lower-left), it doesn't seem
-                // to apply this rule to textures loaded from files like the fontImage.
-                // Thus the difference requiring the upside-down Y coord below.
-                charImage.SetPixels(fontImage.GetPixels(tx * charSourceSize, fontImage.height - (ty+1) * charSourceSize, charSourceSize, charSourceSize));
-                charImage.Compress(false);
-                charImage.Apply();
-
-                fontArray[i] = charImage;
-            }
+            return soundMaker;
         }
         
         private void LoadAudio()
         {
             beepURL = new WWW("file://"+ root + "GameData/kOS/GFX/terminal-beep.wav");
-            AudioClip beepClip = beepURL.audioClip;            
+            AudioClip beepClip = beepURL.audioClip;
             beepSource = gameObject.AddComponent<AudioSource>();
             beepSource.clip = beepClip;
         }
 
-        public void LoadTexture(String relativePath, ref Texture2D targetTexture)
+        public void LoadTexture(string relativePath, ref Texture2D targetTexture)
         {
             var imageLoader = new WWW("file://" + root + relativePath);
             imageLoader.LoadImageIntoTexture(targetTexture);
 
-            if (imageLoader.isDone && imageLoader.size == 0) allTexturesFound = false;
+            if (imageLoader.isDone && imageLoader.size == 0)
+            {
+                SafeHouse.Logger.LogError(string.Format("[TermWindow] Loading texture from \"{0}\" failed", relativePath));
+                allTexturesFound = false;
+            }
         }
         
-        public void OpenPopupEditor( Volume v, string fName )
+        public void OpenPopupEditor(Volume v, GlobalPath path)
         {
-            popupEditor.AttachTo(this, v, fName );
+            popupEditor.AttachTo(this, v, path);
             popupEditor.Open();
         }
         
@@ -225,6 +273,33 @@ namespace kOS.Screen
             BringToFront();
             guiTerminalBeepsPending = 0; // Closing and opening the window will wipe pending beeps from the beep queue.
         }
+            
+        /// <param name="recalcWidth">If true, recalc the font width from height if there's any font change.
+        /// Setting this to true should only be done from inside an OnGUI call.
+        /// If you call this from outside an OnGUI context, set this to false.</param>
+        private void GetFontIfChanged(bool recalcWidth)
+        {
+            int newSize = shared.Screen.CharacterPixelHeight;
+            string newName =  SafeHouse.Config.TerminalFontName;
+            if (fontSize != newSize || !(tryFontNames[0].Equals(newName)))
+            {
+                fontSize = newSize;
+                tryFontNames[0] = newName;
+                font = AssetManager.Instance.GetSystemFontByNameAndSize(tryFontNames, fontSize, false);
+
+                terminalLetterSkin.label.font = font;
+                terminalLetterSkin.label.fontSize = fontSize;
+                if (recalcWidth)
+                {
+                    CharacterInfo chInfo;
+                    terminalLetterSkin.label.font.RequestCharactersInTexture("X"); // Make sure the char in the font is lazy-loaded by Unity.
+                    terminalLetterSkin.label.font.GetCharacterInfo('X', out chInfo);
+                    shared.Screen.CharacterPixelWidth = chInfo.advance;
+
+                    NotifyOfScreenResize(shared.Screen);
+                }
+            }
+        }
 
         public override void Close()
         {
@@ -246,25 +321,14 @@ namespace kOS.Screen
             ShowCursor = true;
             BringToFront();
 
-            cameraManager = CameraManager.Instance;
-            cameraManager.enabled = false;
 
-            InputLockManager.SetControlLock(CONTROL_LOCKOUT);
+            // Exclude the TARGETING ControlType so that we can set the target vessel with the terminal open.
+            InputLockManager.SetControlLock(ControlTypes.All & ~ControlTypes.TARGETING, CONTROL_LOCKOUT);
 
             // Prevent editor keys from being pressed while typing
             EditorLogic editor = EditorLogic.fetch;
                 //TODO: POST 0.90 REVIEW
             if (editor != null && InputLockManager.IsUnlocked(ControlTypes.All)) editor.Lock(true, true, true, CONTROL_LOCKOUT);
-
-            // This seems to be the only way to force KSP to let me lock out the "X" throttle
-            // key.  It seems to entirely bypass the logic of every other keypress in the game,
-            // so the only way to fix it is to use the keybindings system from the Setup screen.
-            // When the terminal is focused, the THROTTLE_CUTOFF action gets unbound, and then
-            // when its unfocused later, its put back the way it was:
-            rememberThrottleCutoffKey = GameSettings.THROTTLE_CUTOFF;
-            GameSettings.THROTTLE_CUTOFF = new KeyBinding(KeyCode.None);
-            rememberThrottleFullKey = GameSettings.THROTTLE_FULL;
-            GameSettings.THROTTLE_FULL = new KeyBinding(KeyCode.None);
         }
 
         private void Unlock()
@@ -275,18 +339,8 @@ namespace kOS.Screen
 
             InputLockManager.RemoveControlLock(CONTROL_LOCKOUT);
 
-            cameraManager.enabled = true;
-
-
             EditorLogic editor = EditorLogic.fetch;
             if (editor != null) editor.Unlock(CONTROL_LOCKOUT);
-
-            // This seems to be the only way to force KSP to let me lock out the "X" throttle
-            // key.  It seems to entirely bypass the logic of every other keypress in the game:
-            if (rememberThrottleCutoffKey != null)
-                GameSettings.THROTTLE_CUTOFF = rememberThrottleCutoffKey;
-            if (rememberThrottleFullKey != null)
-                GameSettings.THROTTLE_FULL = rememberThrottleFullKey;
 
         }
 
@@ -294,17 +348,19 @@ namespace kOS.Screen
         {
             if (!IsOpen) return;
 
+            GetFontIfChanged(true);
+
+            ProcessUnconsumedInput();
+
             if (isLocked) ProcessKeyEvents();
-            
-            try
+            if (FlightResultsDialog.isDisplaying) return;
+            if (uiGloballyHidden)
             {
-                if (FlightResultsDialog.isDisplaying) return;
-                if (uiGloballyHidden && kOS.Safe.Utilities.SafeHouse.Config.ObeyHideUI) return;
+                kOS.Safe.Encapsulation.IConfig cfg = kOS.Safe.Utilities.SafeHouse.Config;
+                if (cfg == null || cfg.ObeyHideUI)
+                    return;
             }
-            catch(NullReferenceException)
-            {
-            }
-            
+
             GUI.skin = HighLogic.Skin;
             
             GUI.color = isLocked ? color : colorAlpha;
@@ -319,7 +375,6 @@ namespace kOS.Screen
                 consumeEvent = false;
                 Event.current.Use();
             }
-
         }
         
         void Update()
@@ -397,11 +452,7 @@ namespace kOS.Screen
             }
             else
             {
-                if (!beepSource.clip.isReadyToPlay || beepSource.isPlaying)
-                    return false; // prev beep sound still is happening.
-                
-                // This is nonblocking.  Begins playing sound in background.  Code will not wait for it to finish:
-                beepSource.Play();
+                return soundMaker.BeginFileSound("beep");
             }
             return true;
         }
@@ -434,9 +485,13 @@ namespace kOS.Screen
             Event e = Event.current;
             if (e.type == EventType.KeyDown)
             {
-                // Unity handles some keys in a particular way
-                // e.g. Keypad7 is mapped to 0xffb7 instead of 0x37
-                var c = (char)(e.character & 0x007f);
+                // This ugly hack is here to solve a bug with Unity mapping
+                // Keycodes to Unicode chars incorrectly on its Linux version:
+                char c;
+                if ((e.character & 0xff00) == 0xff00) // Only trigger on Unicode values 0xff00 through 0xffff, to avoid issue #2061
+                    c = (char)(e.character & 0x007f); // When doing this to solve issue #206 (yes, #206, separate from #2061 above)
+                else
+                    c = e.character;
 
                 // command sequences
                 if (e.keyCode == KeyCode.C && e.control) // Ctrl+C
@@ -470,8 +525,10 @@ namespace kOS.Screen
                     return;
                 }
                 
-                if (0x20 <= c && c < 0x7f) // printable characters
+                if (!IsSpecial(c)) // printable characters
                 {
+                    if (DebugInternational)
+                        c = DebugInternationalMapping(c);
                     ProcessOneInputChar(c, null);
                     consumeEvent = true;
                     cursorBlinkTime = 0.0f; // Don't blink while the user is still actively typing.
@@ -504,6 +561,43 @@ namespace kOS.Screen
                 }
             }
         }
+
+        private static bool IsSpecial(char c)
+        {
+            if (c < 0x0020)
+                return true;
+            if (Enum.IsDefined(typeof(UnicodeCommand), (int)c))
+                return true;
+            return false;
+        }
+
+        private static char DebugInternationalMapping(char c)
+        {
+            // Hex codes are used for the unicode letters here, just
+            // in case some kOS contributor tries to edit this source
+            // file in a non-Unicode-aware editor that would break
+            // the code.  (This way it only would break what's written
+            // in the comment, not the code).
+            if (c == '%')
+                return (char)0x00c6; // 'Æ'
+            if (c == '$')
+                return (char)0x015d; // 'ŝ'
+            if (c == '&')
+                return (char)0x042f; // 'Я'
+            if (c == '~')
+                return (char)0x00f1; // 'ñ'
+            return c;
+        }
+
+        /// <summary>
+        /// A means to get the current terminal font size without
+        /// having to expose the terminal's inner members.
+        /// </summary>
+        /// <returns>The font size.</returns>
+        public int GetFontSize()
+        {
+            return shared.Screen.CharacterPixelHeight;
+        }
         
         /// <summary>
         /// Read all pending input from all telnet clients attached and process it all.
@@ -517,11 +611,20 @@ namespace kOS.Screen
         /// </summary>
         private void ProcessTelnetInput()
         {
-            foreach (var telnet in telnets)
+            // It's possible to close and remove telnets from the list during the processing
+            // of input (if the detach signal Ctrl-D is sent).  Therefore we have to
+            // make this temp copy to prorect against the C# error "Collection was Modified"
+            // during the foreach loop:
+            TelnetSingletonServer[] tempTelnetList = new TelnetSingletonServer[telnets.Count()];
+            telnets.CopyTo(tempTelnetList);
+            foreach (TelnetSingletonServer telnet in tempTelnetList)
             {
-                while (telnet.InputWaiting())
+                if (telnet.ConnectedProcessor != null)
                 {
-                    ProcessOneInputChar(telnet.ReadChar(), telnet);
+                    while (telnet.InputWaiting())
+                    {
+                        ProcessOneInputChar(telnet.ReadChar(), telnet);
+                    }
                 }
             }
         }
@@ -541,7 +644,9 @@ namespace kOS.Screen
         /// <param name="ch">The character, which might be a UnicodeCommand char</param>
         /// <param name="whichTelnet">If this came from a telnet session, which one did it come from?
         /// Set to null in order to say it wasn't from a telnet but was from the interactive GUI</param>
-        public void ProcessOneInputChar(char ch, TelnetSingletonServer whichTelnet)
+        /// <param name="doQueuing">true if the keypress should get queued if we're not ready for it
+        /// right now.  If false, then the keypress will be ignored if we're not ready for it.</param>
+        public void ProcessOneInputChar(char ch, TelnetSingletonServer whichTelnet, bool doQueuing = true)
         {
             // Weird exceptions for multi-char data combos that would have been begun on previous calls to this method:
             switch (inputExpected)
@@ -559,14 +664,9 @@ namespace kOS.Screen
                     break;
             }
 
-            // Printable ASCII section of Unicode - the common vanilla situation
-            // (Idea: Since this is all Unicode anyway, should we allow a wider range to
-            // include multi-language accent characters and so on?  Answer: to do so we'd
-            // first need to expand the font pictures in the font image file, so it's a
-            // bigger task than it may first seem.)
-            if (0x0020 <= ch && ch <= 0x007f)
+            if (! IsSpecial(ch))
             {
-                 Type(ch);
+                 Type(ch, doQueuing);
             }
             else
             {
@@ -576,13 +676,15 @@ namespace kOS.Screen
                     // maps directly into nicely, otherwise just pass it through to SpecialKey():
 
                     case (char)UnicodeCommand.DELETELEFT:
-                        Type((char)8);
+                    case (char)8:
+                        Type((char)8, doQueuing);
                         break;
                     case (char)UnicodeCommand.STARTNEXTLINE:
-                        Type('\r');
+                    case '\r':
+                        Type('\r', doQueuing);
                         break;
                     case '\t':
-                        Type('\t');
+                        Type('\t', doQueuing);
                         break;
                     case (char)UnicodeCommand.RESIZESCREEN:
                         inputExpected = ExpectNextChar.RESIZEWIDTH;
@@ -597,7 +699,7 @@ namespace kOS.Screen
                             if (whichTelnet == null)
                                 Close();
                             else
-                                whichTelnet.DisconnectFromProcessor();
+                                DetachTelnet(whichTelnet);
                         }
                         break;
                         
@@ -613,7 +715,7 @@ namespace kOS.Screen
                     // Typical case is to just let SpecialKey do the work:
                     
                     default:
-                        SpecialKey(ch);
+                        SpecialKey(ch, doQueuing);
                         break;
                 }
             }
@@ -621,23 +723,70 @@ namespace kOS.Screen
             // else ignore it - unimplemented char.
         }
 
-        void Type(char ch)
+        void Type(char ch, bool doQueuing = true)
         {
-            if (shared != null && shared.Interpreter != null)
+            if (shared != null)
             {
-                shared.Interpreter.Type(ch);
-                if (IsOpen && keyClickEnabled)
-                    shared.SoundMaker.BeginSound("click");
+                if (shared.Interpreter != null && shared.Interpreter.IsWaitingForCommand())
+                {
+                    shared.Interpreter.Type(ch);
+                }
+                else if (doQueuing)
+                {
+                    shared.Screen.CharInputQueue.Enqueue(ch);
+                }
+                if (IsOpen && keyClickEnabled && doQueuing)
+                    shared.SoundMaker.BeginFileSound("click");
             }
         }
 
-        void SpecialKey(char key)
+        void SpecialKey(char key, bool doQueuing = true)
         {
-            if (shared != null && shared.Interpreter != null)
+            if (shared != null)
             {
-                bool wasUsed = shared.Interpreter.SpecialKey(key);
-                if (IsOpen && keyClickEnabled && wasUsed)
-                    shared.SoundMaker.BeginSound("click");
+                bool wasUsed = false;
+                
+                if (shared.Interpreter != null && 
+                    (shared.Interpreter.IsWaitingForCommand() || (key == (char)UnicodeCommand.BREAK)))
+                {
+                    wasUsed = shared.Interpreter.SpecialKey(key);
+                }
+                else if (doQueuing)
+                {
+                    shared.Screen.CharInputQueue.Enqueue(key);
+                    wasUsed = true;
+                }
+                if (IsOpen && keyClickEnabled && wasUsed && doQueuing)
+                    shared.SoundMaker.BeginFileSound("click");
+            }
+        }
+        
+        /// <summary>
+        /// When the input queue is not empty and the program or command is done such that
+        /// the input cursor is now all the way back to the interpreter awaiting new input,
+        /// send that queue out to the interpreter.  This allows you to type the next command
+        /// blindly while waiting for the previous one to finish.
+        /// This is how people used to terminals would expect things to work.
+        /// </summary>
+        void ProcessUnconsumedInput()
+        {
+            if (shared != null && shared.Interpreter != null && shared.Interpreter.IsWaitingForCommand())
+            {
+                Queue<char> q = shared.Screen.CharInputQueue;
+                
+                while (q.Count > 0 && shared.Interpreter.IsWaitingForCommand())
+                {
+                    // Setting doQueuing to false here just as an
+                    // additional safety measure.  Hypothetically it
+                    // should never re-queue this input because we're
+                    // in the condition where it will consume it right
+                    // away.  But just in case there's some error in
+                    // that logic, we want to avoid an infinite loop here
+                    // (which could happen if we kept re-queuing the
+                    // chars every time we processed one in this loop.)
+                    char key = q.Dequeue();
+                    ProcessOneInputChar(key, null, false);
+                }
             }
         }
         
@@ -664,13 +813,17 @@ namespace kOS.Screen
 
         void TerminalGui(int windowId)
         {
-
             if (!allTexturesFound)
             {
                 GUI.Label(new Rect(15, 15, 450, 300), "Error: Some or all kOS textures were not found. Please " +
                            "go to the following folder: \n\n<Your KSP Folder>\\GameData\\kOS\\GFX\\ \n\nand ensure that the png texture files are there.");
 
-                GUI.Label(closeButtonRect, "Close");
+                closeButtonRect = new Rect(WindowRect.width - 75, WindowRect.height - 30, 50, 25);
+                if (GUI.Button(closeButtonRect, "Close"))
+                {
+                    Close();
+                    Event.current.Use();
+                }
                 return;
             }
 
@@ -681,8 +834,8 @@ namespace kOS.Screen
             IScreenBuffer screen = shared.Screen;
             
             GUI.color = isLocked ? color : colorAlpha;
-            GUI.DrawTexture(new Rect(15, 20, WindowRect.width-30, WindowRect.height-55), terminalImage);
 
+            GUI.Label(new Rect(15, 20, WindowRect.width-30, WindowRect.height-55), "", terminalImageStyle);
             if (telnets.Count > 0)
                 DrawTelnetStatus();
 
@@ -693,14 +846,10 @@ namespace kOS.Screen
             Rect rasterBarsButtonRect = new Rect(10, WindowRect.height - 42, 85, 18);
             Rect brightnessRect = new Rect(3, WindowRect.height - 100, 8, 50);
             Rect brightnessButtonRect = new Rect(1, WindowRect.height - 48, brightnessButtonImage.width, brightnessButtonImage.height);
-            Rect fontWidthButtonRect = new Rect(15, WindowRect.height-32, fontWidthButtonImage.width, fontWidthButtonImage.height);
-            Rect fontWidthLabelRect = new Rect(35, WindowRect.height-28, 20, 10);
-            Rect fontWidthLessButtonRect = new Rect(65, WindowRect.height-28, 10, 10);
-            Rect fontWidthMoreButtonRect = new Rect(90, WindowRect.height-28, 10, 10);
-            Rect fontHeightButtonRect = new Rect(140, WindowRect.height-32, fontHeightButtonImage.width, fontHeightButtonImage.height);
-            Rect fontHeightLabelRect = new Rect(160, WindowRect.height-28, 20, 10);
-            Rect fontHeightLessButtonRect = new Rect(185, WindowRect.height-28, 10, 10);
-            Rect fontHeightMoreButtonRect = new Rect(210, WindowRect.height-28, 10, 10);
+            Rect fontHeightButtonRect = new Rect(30, WindowRect.height-33, fontHeightButtonImage.width, fontHeightButtonImage.height);
+            Rect fontHeightLabelRect = new Rect(45, WindowRect.height-33, 20, 13);
+            Rect fontHeightLessButtonRect = new Rect(75, WindowRect.height-37, 12, 13);
+            Rect fontHeightMoreButtonRect = new Rect(100, WindowRect.height-37, 12, 13);
 
             resizeButtonCoords = new Rect(WindowRect.width-resizeButtonImage.width,
                                           WindowRect.height-resizeButtonImage.height,
@@ -725,28 +874,23 @@ namespace kOS.Screen
             screen.ReverseScreen = GUI.Toggle(reverseButtonRect, screen.ReverseScreen, "Reverse Screen", tinyToggleStyle);
             screen.VisualBeep = GUI.Toggle(visualBeepButtonRect, screen.VisualBeep, "Visual Beep", tinyToggleStyle);
             keyClickEnabled = GUI.Toggle(keyClickButtonRect, keyClickEnabled, "Keyclicker", tinyToggleStyle);
-            screen.Brightness = GUI.VerticalSlider(brightnessRect, screen.Brightness, 1f, 0f);
+            screen.Brightness = (double) GUI.VerticalSlider(brightnessRect, (float)screen.Brightness, 1f, 0f);
             GUI.DrawTexture(brightnessButtonRect, brightnessButtonImage);
 
-            int charWidth = screen.CharacterPixelWidth;
             int charHeight = screen.CharacterPixelHeight;
-            
-            GUI.DrawTexture(fontWidthButtonRect, fontWidthButtonImage);
-            GUI.Label(fontWidthLabelRect,charWidth+"px", customSkin.label);
-            if (GUI.Button(fontWidthLessButtonRect, "-", customSkin.button))
-                charWidth = Math.Max(4, charWidth - 2);
-            if (GUI.Button(fontWidthMoreButtonRect, "+", customSkin.button))
-                charWidth = Math.Min(24, charWidth + 2);
+            int charWidth = screen.CharacterPixelWidth;
 
+            // Note, pressing these buttons causes a change *next* OnGUI, not on this pass.
+            // Changing it in the midst of this pass confuses the terminal to change
+            // it's mind about how wide the window should be halfway through painting the
+            // components that make it up:
             GUI.DrawTexture(fontHeightButtonRect, fontHeightButtonImage);
             GUI.Label(fontHeightLabelRect,charHeight+"px", customSkin.label);
+            postponedCharPixelHeight = -1; // -1 means "font size buttons weren't clicked on this pass".
             if (GUI.Button(fontHeightLessButtonRect, "-", customSkin.button))
-                charHeight = Math.Max(4, charHeight - 2);
+                postponedCharPixelHeight = Math.Max(4, charHeight - 2);
             if (GUI.Button(fontHeightMoreButtonRect, "+", customSkin.button))
-                charHeight = Math.Min(24, charHeight + 2);
-
-            screen.CharacterPixelWidth = charWidth;
-            screen.CharacterPixelHeight = charHeight;
+                postponedCharPixelHeight = Math.Min(24, charHeight + 2);
 
             fontGotResized = false;
             if (formerCharPixelWidth != screen.CharacterPixelWidth || formerCharPixelHeight != screen.CharacterPixelHeight)
@@ -767,34 +911,42 @@ namespace kOS.Screen
                 GUI.color = AdjustColor(textColor, screen.Brightness);
                 GUI.DrawTexture(new Rect(15, 20, WindowRect.width-30, WindowRect.height-55), Texture2D.whiteTexture, ScaleMode.ScaleAndCrop );
             }
-            GUI.BeginGroup(new Rect(28, 38, screen.ColumnCount * charWidth, screen.RowCount * charHeight));
+            terminalLetterSkin.label.normal.textColor = AdjustColor(reversingScreen ? bgColor : currentTextColor, screen.Brightness);            
+            GUI.BeginGroup(new Rect(28, 38, screen.ColumnCount * charWidth + 2, screen.RowCount * charHeight + 2)); // +2's for the sake of safety margin
 
-            List<IScreenBufferLine> buffer = mostRecentScreen.Buffer; // just to keep the name shorter below:
-
-            // Sometimes the buffer is shorter than the terminal height if the resize JUST happened in the last Update():
-            int rowsToPaint = Math.Min(screen.RowCount, buffer.Count);
-
-            for (int row = 0; row < rowsToPaint; row++)
+            // When loading a quicksave, it is possible for the teminal window to update even though
+            // mostRecentScreen is null.  If that's the case, just skip the screen update.
+            if (mostRecentScreen != null)
             {
-                IScreenBufferLine lineBuffer = buffer[row];
-                for (int column = 0; column < lineBuffer.Length; column++)
+                List<IScreenBufferLine> buffer = mostRecentScreen.Buffer; // just to keep the name shorter below:
+
+                // Sometimes the buffer is shorter than the terminal height if the resize JUST happened in the last Update():
+                int rowsToPaint = Math.Min(screen.RowCount, buffer.Count);
+
+                for (int row = 0; row < rowsToPaint; row++)
                 {
-                    char c = lineBuffer[column];
-                    if (c != 0 && c != 9 && c != 32)
-                        ShowCharacterByAscii(c, column, row, reversingScreen,
-                                             charWidth, charHeight, screen.Brightness);
-                }
-            }
+                    // At first the screen is filled with null chars.  So if you do something like
+                    // PRINT "AAA" AT (4,0) you can get a row of the screen like so "\0\0\0\0AAA".
+                    // When the font renderer prints null chars, they don't advance the cursor
+                    // even in a monospoaced font (so "\0\0\0\0AAA" looks just like "AAA" instead
+                    // of looking like "    AAA" when printed).  The reason for the "cooking" of
+                    // the string below is to fix this problem:
+                    string lineString = buffer[row].ToString().Replace( '\0', ' ');
 
-            bool blinkOn = cursorBlinkTime < 0.5f &&
-                           screen.CursorRowShow < screen.RowCount &&
-                           IsPowered &&
-                           ShowCursor;
-            
-            if (blinkOn)
-            {
-                ShowCharacterByAscii((char)1, screen.CursorColumnShow, screen.CursorRowShow, reversingScreen,
-                                     charWidth, charHeight, screen.Brightness);
+                    GUI.Label(new Rect(0, (row * charHeight), WindowRect.width - 10, charHeight), lineString, terminalLetterSkin.label);
+                }
+
+                bool blinkOn = cursorBlinkTime < 0.5f &&
+                               screen.CursorRowShow < screen.RowCount &&
+                               IsPowered &&
+                               ShowCursor;
+
+                if (blinkOn)
+                {
+                    char ch = buffer[screen.CursorRowShow][screen.CursorColumnShow];
+                    DrawCursorAt(ch, screen.CursorColumnShow, screen.CursorRowShow, reversingScreen,
+                                         charWidth, charHeight, screen.Brightness);
+                }
             }
             
             GUI.EndGroup();
@@ -804,21 +956,23 @@ namespace kOS.Screen
             // Draw the rounded corner frame atop the chars field, so it covers the sqaure corners of the character zone
             // if they bleed over a bit.  Also, change which variant is used depending on focus:
             if (isLocked)
-                GUI.DrawTexture(new Rect(15, 20, WindowRect.width-30, WindowRect.height-55), terminalFrameActiveImage);            
+                GUI.Label(new Rect(15, 20, WindowRect.width-30, WindowRect.height-55), "", terminalFrameActiveStyle);
             else
-                GUI.DrawTexture(new Rect(15, 20, WindowRect.width-30, WindowRect.height-55), terminalFrameImage);            
+                GUI.Label(new Rect(15, 20, WindowRect.width-30, WindowRect.height-55), "", terminalFrameStyle);
 
             GUI.Label(new Rect(WindowRect.width/2-40, WindowRect.height-12,100,10), screen.ColumnCount+"x"+screen.RowCount, customSkin.label);
 
             if (!fontGotResized)
                 CheckResizeDrag(); // Has to occur before DragWindow or else DragWindow will consume the event and prevent drags from being seen by the resize icon.
             GUI.DragWindow();
+            if (postponedCharPixelHeight >= 0)
+                shared.Screen.CharacterPixelHeight = postponedCharPixelHeight; // next OnGUI will repaint in the new size.
         }
         
-        protected Color AdjustColor(Color baseColor, float brightness)
+        protected Color AdjustColor(Color baseColor, double brightness)
         {
             Color newColor = baseColor;
-            newColor.a = brightness; // represent dimness by making it fade into the backround.
+            newColor.a = Convert.ToSingle(brightness); // represent dimness by making it fade into the backround.
             return newColor;
         }
 
@@ -863,11 +1017,20 @@ namespace kOS.Screen
             }
         }
         
-        void ShowCharacterByAscii(char ch, int x, int y, bool reversingScreen, int charWidth, int charHeight, float brightness)
+        void DrawCursorAt(char ch, int x, int y, bool reversingScreen, int charWidth, int charHeight, double brightness)
         {
+            // To emulate inverting the screen character, draw a solid block, then the reversed character atop it:
+            // Solid Block:
             GUI.BeginGroup(new Rect((x * charWidth), (y * charHeight), charWidth, charHeight));
-            GUI.color = AdjustColor(reversingScreen ? bgColor : currentTextColor, brightness);            
-            GUI.DrawTexture(new Rect(0, 0, charWidth, charHeight), fontArray[ch], ScaleMode.StretchToFill, true);
+            GUI.color = AdjustColor(reversingScreen ? bgColor : currentTextColor, brightness);
+            GUI.DrawTexture(new Rect(0, 0, charWidth, charHeight), Texture2D.whiteTexture, ScaleMode.StretchToFill, true);
+            GUI.EndGroup();
+            // Inverted Character atop it in the same position:
+            GUI.BeginGroup(new Rect((x * charWidth), (y * charHeight), charWidth, charHeight));
+            GUI.color = AdjustColor(reversingScreen ? currentTextColor : bgColor,
+                2*brightness /*it seems to need slightly higher alpha values to show up atop the solid block*/ );
+            terminalLetterSkin.label.normal.textColor = GUI.color;
+            GUI.Label(new Rect(0, 0, charWidth, charHeight), ch.ToString(), terminalLetterSkin.label);
             GUI.EndGroup();
         }
 
@@ -886,15 +1049,17 @@ namespace kOS.Screen
             shared = sharedObj;
             shared.Window = this;
             
-            shared.Screen.CharacterPixelWidth = 8;
-            shared.Screen.CharacterPixelHeight = 8;
-            shared.Screen.Brightness = 0.5f;
+            shared.Screen.CharacterPixelWidth = 8; // will be overridden later when drawing the font.
+            shared.Screen.CharacterPixelHeight = SafeHouse.Config.TerminalFontDefaultSize;
+            shared.Screen.Brightness = SafeHouse.Config.TerminalBrightness;
             formerCharPixelWidth = shared.Screen.CharacterPixelWidth;
             formerCharPixelHeight = shared.Screen.CharacterPixelHeight;
 
             NotifyOfScreenResize(shared.Screen);
             shared.Screen.AddResizeNotifier(NotifyOfScreenResize);
             ChangeTitle(CalcualteTitle());
+
+            soundMaker.AttachTo(shared); // Attach the soundMaker also
         }
         
         internal string CalcualteTitle()
@@ -917,6 +1082,7 @@ namespace kOS.Screen
         {
             server.DisconnectFromProcessor();
             telnets.Remove(server);
+            prevTelnetScreens.Remove(server);
         }
         
         public void DetachAllTelnets()
@@ -1091,7 +1257,7 @@ namespace kOS.Screen
         
         private static GUISkin BuildPanelSkin()
         {
-            GUISkin theSkin = kOS.Utilities.Utils.GetSkinCopy(HighLogic.Skin);
+            GUISkin theSkin = Instantiate(HighLogic.Skin); // Use Instantiate to make a copy of the Skin Object
 
             theSkin.label.fontSize = 10;
             theSkin.label.normal.textColor = Color.white;

@@ -6,6 +6,10 @@ using kOS.Safe.Serialization;
 using kOS.Safe.Utilities;
 using kOS.Serialization;
 using System;
+using KSP.IO;
+using kOS.Safe;
+using kOS.Safe.Compilation;
+using System.Collections.Generic;
 
 namespace kOS.Function
 {
@@ -14,80 +18,58 @@ namespace kOS.Function
     {
         public override void Execute(SharedObjects shared)
         {
-            string fileName = PopValueAssert(shared, true).ToString();
+            object pathObject = PopValueAssert(shared, true);
             AssertArgBottomAndConsume(shared);
 
-            if (shared.VolumeMgr != null)
-            {
-                Volume vol = shared.VolumeMgr.CurrentVolume;
-                var volumeFile = vol.OpenOrCreate(fileName);
-                shared.Window.OpenPopupEditor(vol, volumeFile.Name);
-            }
+            GlobalPath path = shared.VolumeMgr.GlobalPathFromObject(pathObject);
+            Volume vol = shared.VolumeMgr.GetVolumeFromPath(path);
+            shared.Window.OpenPopupEditor(vol, path);
+
         }
     }
 
-    [Function("copy")]
-    public class FunctionCopy : FunctionBase
+    [Function("cd", "chdir")]
+    public class FunctionCd : FunctionBase
     {
         public override void Execute(SharedObjects shared)
         {
-            object volumeId = PopValueAssert(shared, true);
-            string direction = PopValueAssert(shared).ToString();
-            string fileName = PopValueAssert(shared, true).ToString();
+            int remaining = CountRemainingArgs(shared);
+
+            VolumeDirectory directory;
+
+            if (remaining == 0)
+            {
+                directory = shared.VolumeMgr.CurrentVolume.Root;
+            }
+            else
+            {
+                object pathObject = PopValueAssert(shared, true);
+
+                GlobalPath path = shared.VolumeMgr.GlobalPathFromObject(pathObject);
+                Volume volume = shared.VolumeMgr.GetVolumeFromPath(path);
+
+                directory = volume.Open(path) as VolumeDirectory;
+
+                if (directory == null)
+                {
+                    throw new KOSException("Invalid directory: " + pathObject);
+                }
+
+            }
+
             AssertArgBottomAndConsume(shared);
 
-            SafeHouse.Logger.Log(string.Format("FunctionCopy: Volume: {0} Direction: {1} Filename: {2}", volumeId, direction, fileName));
-
-            if (shared.VolumeMgr != null)
-            {
-                Volume origin;
-                Volume destination;
-
-                if (direction == "from")
-                {
-                    origin = volumeId is Volume ? volumeId as Volume : shared.VolumeMgr.GetVolume(volumeId);
-                    destination = shared.VolumeMgr.CurrentVolume;
-                }
-                else
-                {
-                    origin = shared.VolumeMgr.CurrentVolume;
-                    destination = volumeId is Volume ? volumeId as Volume : shared.VolumeMgr.GetVolume(volumeId);
-                }
-
-                if (origin != null && destination != null)
-                {
-                    if (origin == destination)
-                    {
-                        throw new Exception("Cannot copy from a volume to the same volume.");
-                    }
-
-                    VolumeFile file = origin.Open(fileName);
-                    if (file != null)
-                    {
-                        if (destination.Save(file.Name, file.ReadAll()) == null)
-                        {
-                            throw new Exception("File copy failed");
-                        }
-                    }
-                    else
-                    {
-                        throw new Exception(string.Format("File '{0}' not found", fileName));
-                    }
-                }
-                else
-                {
-                    throw new Exception(string.Format("Volume {0} not found", volumeId));
-                }
-            }
+            shared.VolumeMgr.CurrentDirectory = directory;
         }
     }
+
 
     [Function("writejson")]
     public class FunctionWriteJson : FunctionBase
     {
         public override void Execute(SharedObjects shared)
         {
-            string fileName = PopValueAssert(shared, true).ToString();
+            object pathObject = PopValueAssert(shared, true);
             SerializableStructure serialized = PopValueAssert(shared, true) as SerializableStructure;
             AssertArgBottomAndConsume(shared);
 
@@ -100,10 +82,10 @@ namespace kOS.Function
 
             FileContent fileContent = new FileContent(serializedString);
 
-            if (shared.VolumeMgr != null)
-            {
-                shared.VolumeMgr.CurrentVolume.Save(fileName, fileContent);
-            }
+            GlobalPath path = shared.VolumeMgr.GlobalPathFromObject(pathObject);
+            Volume volume = shared.VolumeMgr.GetVolumeFromPath(path);
+
+            ReturnValue = volume.SaveFile(path, fileContent);
         }
     }
 
@@ -112,18 +94,20 @@ namespace kOS.Function
     {
         public override void Execute(SharedObjects shared)
         {
-            string fileName = PopValueAssert(shared, true).ToString();
+            object pathObject = PopValueAssert(shared, true);
             AssertArgBottomAndConsume(shared);
 
-            VolumeFile volumeFile = shared.VolumeMgr.CurrentVolume.Open(fileName);
+            GlobalPath path = shared.VolumeMgr.GlobalPathFromObject(pathObject);
+            Volume volume = shared.VolumeMgr.GetVolumeFromPath(path);
+
+            VolumeFile volumeFile = volume.Open(path) as VolumeFile;
 
             if (volumeFile == null)
             {
-                throw new KOSException("File does not exist: " + fileName);
+                throw new KOSException("File does not exist: " + path);
             }
 
-            object read = new SerializationMgr(shared).Deserialize(volumeFile.ReadAll().String, JsonFormatter.ReaderInstance);
-
+            Structure read = new SerializationMgr(shared).Deserialize(volumeFile.ReadAll().String, JsonFormatter.ReaderInstance) as SerializableStructure;
             ReturnValue = read;
         }
     }

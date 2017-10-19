@@ -27,6 +27,11 @@ namespace kOS.Safe.Encapsulation
         {
             return new BuiltinDelegate(this);
         }
+
+        public override bool IsDead()
+        {
+            return false; // builtins cannot be dead.
+        }
         
         public override string ToString()
         {
@@ -39,7 +44,7 @@ namespace kOS.Safe.Encapsulation
             // do nothing.
         }
         
-        public override Structure Call()
+        public override Structure CallWithArgsPushedAlready()
         {
             int throwAway = OpcodeCall.StaticExecute(Cpu, true, Name, true);
             // throwAway will be -1 for cases where it's a builtin function.

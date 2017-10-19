@@ -10,7 +10,7 @@ namespace kOS.Function
     {
         public abstract void Execute(SharedObjects shared);
 
-        public override void Execute(Safe.SharedObjects shared)
+        public override void Execute(Safe.SafeSharedObjects shared)
         {
             Execute(shared as SharedObjects);
         }

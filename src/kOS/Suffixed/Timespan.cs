@@ -46,7 +46,7 @@ namespace kOS.Suffixed
             AddSuffix("MINUTE", new Suffix<ScalarValue>(CalculateMinute));
             AddSuffix("SECOND", new Suffix<ScalarValue>(CalculateSecond));
             AddSuffix("SECONDS", new Suffix<ScalarValue>(() => span));
-            AddSuffix("CLOCK", new Suffix<StringValue>(() => string.Format("{0:00}:{1:00}:{2:00}", CalculateHour(), CalculateMinute(), CalculateSecond())));
+            AddSuffix("CLOCK", new Suffix<StringValue>(() => string.Format("{0:00}:{1:00}:{2:00}", (int)CalculateHour(), (int)CalculateMinute(), (int)CalculateSecond())));
             AddSuffix("CALENDAR", new Suffix<StringValue>(() => "Year " + CalculateYear() + ", day " + CalculateDay()));
         }
 
@@ -80,7 +80,7 @@ namespace kOS.Suffixed
 
         private ScalarValue CalculateSecond()
         {
-            return span%SECONDS_IN_MINUTE;
+            return (int)Math.Floor(span % SECONDS_IN_MINUTE);
         }
 
         public double ToUnixStyleTime()
@@ -94,6 +94,7 @@ namespace kOS.Suffixed
         public static TimeSpan operator -(TimeSpan a, double b) { return new TimeSpan(a.ToUnixStyleTime() - b); }
         public static TimeSpan operator *(TimeSpan a, double b) { return new TimeSpan(a.ToUnixStyleTime() * b); }
         public static TimeSpan operator /(TimeSpan a, double b) { return new TimeSpan(a.ToUnixStyleTime() / b); }
+        public static TimeSpan operator +(double b, TimeSpan a) { return new TimeSpan(b + a.ToUnixStyleTime()); }
         public static TimeSpan operator -(double b, TimeSpan a) { return new TimeSpan(b - a.ToUnixStyleTime()); }
         public static TimeSpan operator *(double b, TimeSpan a) { return new TimeSpan(b * a.ToUnixStyleTime()); }
         public static TimeSpan operator /(double b, TimeSpan a) { return new TimeSpan(b / a.ToUnixStyleTime()); }
@@ -128,48 +129,36 @@ namespace kOS.Suffixed
         public static bool operator >=(ScalarValue a, TimeSpan b) { return a >= b.ToUnixStyleTime(); }
         public static bool operator <=(ScalarValue a, TimeSpan b) { return a <= b.ToUnixStyleTime(); }
 
-        public override object TryOperation(string op, object other, bool reverseOrder)
+        public override bool Equals(object obj)
         {
-            other = ConvertToDoubleIfNeeded(other);
-
-            // Order shouldn't matter here
-            if (other is TimeSpan && op == "+") return this + (TimeSpan)other;
-            if (other is double && op == "+") return this + (double)other;
-            if (other is double && op == "*") return this * (double)other; // Order would matter here if this were matrices
-
-            if (!reverseOrder)
+            Type compareType = typeof(TimeSpan);
+            if (compareType.IsInstanceOfType(obj))
             {
-                if (other is TimeSpan && op == "-") return this - (TimeSpan)other;
-                if (other is TimeSpan && op == "/") return this / (TimeSpan)other;
-                if (other is double && op == "-") return this - (double)other;
-                if (other is double && op == "/") return this / (double)other;
-                if (other is TimeSpan && op == ">") return this > (TimeSpan)other;
-                if (other is TimeSpan && op == "<") return this < (TimeSpan)other;
-                if (other is TimeSpan && op == ">=") return this >= (TimeSpan)other;
-                if (other is TimeSpan && op == "<=") return this <= (TimeSpan)other;
-                if (other is double && op == ">") return this > (double)other;
-                if (other is double && op == "<") return this < (double)other;
-                if (other is double && op == ">=") return this >= (double)other;
-                if (other is double && op == "<=") return this <= (double)other;
+                TimeSpan t = obj as TimeSpan;
+                // Check the equality of the span value
+                return span == t.ToUnixStyleTime();
             }
-            else
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return span.GetHashCode();
+        }
+
+        public static bool operator ==(TimeSpan a, TimeSpan b)
+        {
+            Type compareType = typeof(TimeSpan);
+            if (compareType.IsInstanceOfType(a))
             {
-                if (other is TimeSpan && op == "-") return (TimeSpan)other - this;
-                if (other is TimeSpan && op == "/") return (TimeSpan)other / this;
-                if (other is double && op == "-") return (double)other - this;
-               if (other is double && op == "/") return (double)other / this; // Can't imagine why the heck you'd want to do this but here it is
-               if (other is TimeSpan && op == ">") return this < (TimeSpan)other;
-               if (other is TimeSpan && op == "<") return this > (TimeSpan)other;
-               if (other is TimeSpan && op == ">=") return (TimeSpan)other >= this;
-               if (other is TimeSpan && op == "<=") return (TimeSpan)other <= this;
-               if (other is double && op == ">") return (double)other > this;
-               if (other is double && op == "<") return (double)other < this;
-               if (other is double && op == ">=") return (double)other >= this;
-               if (other is double && op == "<=") return (double)other <= this;
-
+                return a.Equals(b); // a is not null, we can use the built in equals function
             }
+            return !compareType.IsInstanceOfType(b); // a is null, return true if b is null and false if not null
+        }
 
-            return base.TryOperation(op, other, reverseOrder);
+        public static bool operator !=(TimeSpan a, TimeSpan b)
+        {
+            return !(a == b);
         }
 
         public override string ToString()

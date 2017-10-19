@@ -29,22 +29,22 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="NSubstitute, Version=1.8.1.0, Culture=neutral, PublicKeyToken=92dd2e9066daa5ca, processorArchitecture=MSIL">
-      <HintPath>..\packages\NSubstitute.1.8.1.0\lib\net35\NSubstitute.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="nunit.framework, Version=2.6.4.14350, Culture=neutral, PublicKeyToken=96d09a1eb7f44a77, processorArchitecture=MSIL">
-      <HintPath>..\packages\NUnit.2.6.4\lib\nunit.framework.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <Reference Include="NSubstitute, Version=1.8.1.0, Culture=neutral, PublicKeyToken=92dd2e9066daa5ca">
+      <HintPath>..\packages\NSubstitute.1.8.1.0\lib\net35\NSubstitute.dll</HintPath>
+    </Reference>
+    <Reference Include="nunit.framework, Version=2.6.4.14350, Culture=neutral, PublicKeyToken=96d09a1eb7f44a77">
+      <HintPath>..\packages\NUnit.2.6.4\lib\nunit.framework.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Calculator\CalculatorScalarTest.cs" />
+    <Compile Include="Calculator\CalculatorStructureTest.cs" />
     <Compile Include="Collections\MixedCollectionPrintingTest.cs" />
     <Compile Include="Structures\BooleanValueTest.cs" />
     <Compile Include="Structures\ScalarValueTest.cs" />
@@ -68,6 +68,21 @@
     <Compile Include="Serialization\TerminalFormatterTest.cs" />
     <Compile Include="Collections\CollectionValueTest.cs" />
     <Compile Include="Collections\RangeValueTest.cs" />
+    <Compile Include="Serialization\FormatterTest.cs" />
+    <Compile Include="Communication\MessageQueueTest.cs" />
+    <Compile Include="Communication\FakeCurrentTimeProvider.cs" />
+    <Compile Include="Collections\UniqueSetValueTest.cs" />
+    <Compile Include="Persistence\VolumePathTest.cs" />
+    <Compile Include="Persistence\GlobalPathTest.cs" />
+    <Compile Include="Persistence\ArchiveTest.cs" />
+    <Compile Include="Persistence\HarddiskTest.cs" />
+    <Compile Include="Persistence\VolumeTest.cs" />
+    <Compile Include="Persistence\CopyAndMoveTest.cs" />
+    <Compile Include="Persistence\HarddiskToArchiveCopyAndMoveTest.cs" />
+    <Compile Include="Persistence\HarddiskToHarddiskCopyAndMoveTest.cs" />
+    <Compile Include="Persistence\ArchiveAndHarddiskCopyAndMoveTest.cs" />
+    <Compile Include="Persistence\ArchiveToHarddiskCopyAndMoveTest.cs" />
+    <Compile Include="KS\ParserTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\kOS.Safe\kOS.Safe.csproj">
@@ -79,18 +94,19 @@
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
   </Target>
   <Target Name="AfterBuild">
   </Target>
   -->
-  <ItemGroup>
-    <Folder Include="Serialization\" />
-  </ItemGroup>
+  <ItemGroup />
   <ItemGroup>
     <Content Include="ProfilingSessions\Session20160127_233127.sdps" />
     <Content Include="ProfilingSessions\Session20160127_233506.sdps" />
+  </ItemGroup>
+  <ItemGroup>
+    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
   </ItemGroup>
 </Project>

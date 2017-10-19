@@ -16,10 +16,11 @@ namespace kOS.Suffixed
             AddSuffix("BODY", new Suffix<StringValue>(()=> celestialBody.bodyName));
             AddSuffix("EXISTS", new Suffix<BooleanValue>(()=> celestialBody.atmosphere));
             AddSuffix("OXYGEN", new Suffix<BooleanValue>(()=> celestialBody.atmosphere && celestialBody.atmosphereContainsOxygen));
-            AddSuffix("SEALEVELPRESSURE", new Suffix<ScalarValue>(()=> celestialBody.atmosphere ? celestialBody.atmospherePressureSeaLevel : 0));
+            AddSuffix("SEALEVELPRESSURE", new Suffix<ScalarValue>(()=> celestialBody.atmosphere ? celestialBody.atmospherePressureSeaLevel * ConstantValue.KpaToAtm : 0));
             AddSuffix("HEIGHT", new Suffix<ScalarValue>(()=> celestialBody.atmosphere ? celestialBody.atmosphereDepth : 0));
+            AddSuffix("ALTITUDEPRESSURE", new OneArgsSuffix<ScalarValue, ScalarValue>((alt)=> celestialBody.GetPressure(alt) * ConstantValue.KpaToAtm));
 
-            AddSuffix("SCALE", new Suffix<ScalarValue>(() => { throw new KOSAtmosphereDeprecationException("0.17.2","SCALE","<None>",string.Empty); }));
+            AddSuffix("SCALE", new Suffix<ScalarValue>(() => { throw new KOSAtmosphereObsoletionException("0.17.2","SCALE","<None>",string.Empty); }));
         }
 
         public override string ToString()

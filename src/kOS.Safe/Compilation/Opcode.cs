@@ -7,6 +7,7 @@ using kOS.Safe.Encapsulation.Suffixes;
 using kOS.Safe.Execution;
 using kOS.Safe.Exceptions;
 using kOS.Safe.Utilities;
+using kOS.Safe.Persistence;
 
 namespace kOS.Safe.Compilation
 {
@@ -73,7 +74,7 @@ namespace kOS.Safe.Compilation
         ADDTRIGGER     = 0x53,
         REMOVETRIGGER  = 0x54,
         WAIT           = 0x55,
-        ENDWAIT        = 0x56,
+        // Removing ENDWAIT, 0x56 may be reused in a future version
         GETMETHOD      = 0x57,
         STORELOCAL     = 0x58,
         STOREGLOBAL    = 0x59,
@@ -214,6 +215,11 @@ namespace kOS.Safe.Compilation
             "+-------------------------------------------------------------------------+\n";
 
         public int Id { get { return id; } }
+        /// <summary>
+        /// How far to jump to the next opcode.  1 is typical (just go to the next opcode),
+        /// but in the case of jump and branch statements, it can be other numbers.  This will
+        /// be ignored if the CPU has been put into a yield state with CPU.YieldProgram().
+        /// </summary>
         public int DeltaInstructionPointer { get; protected set; }
         public int MLIndex { get; set; } // index into the Machine Language code file for the COMPILE command.
         
@@ -231,7 +237,7 @@ namespace kOS.Safe.Compilation
 
         public string Label {get{return label;} set {label = value;} }
         public virtual string DestinationLabel {get;set;}
-        public string SourceName;
+        public GlobalPath SourcePath;
 
         public short SourceLine { get; set; } // line number in the source code that this was compiled from.
         public short SourceColumn { get; set; }  // column number of the token nearest the cause of this Opcode.
@@ -381,8 +387,6 @@ namespace kOS.Safe.Compilation
             //
             // Reflection: A good way to make a simple idea look messier than it really is.
             //
-            var a1array = a1.PropertyInfo.GetCustomAttributes(true).Cast<Attribute>();
-            var a2array = a2.PropertyInfo.GetCustomAttributes(true).Cast<Attribute>();
             var attributes1 = a1.PropertyInfo.GetCustomAttributes(true).Cast<Attribute>().ToList();
             var attributes2 = a2.PropertyInfo.GetCustomAttributes(true).Cast<Attribute>().ToList();
             var f1 = (MLField) attributes1.First(a => a is MLField);
@@ -462,6 +466,7 @@ namespace kOS.Safe.Compilation
         {
             return Structure.FromPrimitiveWithAssert(PopValueAssert(cpu, barewordOkay));
         }
+
     }
 
     public abstract class BinaryOpcode : Opcode
@@ -653,7 +658,7 @@ namespace kOS.Safe.Compilation
             }
             else
             {
-                throw new KOSDeprecationException("0.17","UNSET ALL", "<not supported anymore now that we have nested scoping>", "");
+                throw new KOSObsoletionException("0.17","UNSET ALL", "<not supported anymore now that we have nested scoping>", "");
             }
         }
     }
@@ -666,7 +671,7 @@ namespace kOS.Safe.Compilation
 
         public override void Execute(ICpu cpu)
         {
-            string suffixName = cpu.PopStack().ToString().ToUpper();
+            string suffixName = cpu.PopStack().ToString();
             object popValue = cpu.PopValueEncapsulated();
 
             var specialValue = popValue as ISuffixed;
@@ -739,7 +744,7 @@ namespace kOS.Safe.Compilation
         public override void Execute(ICpu cpu)
         {
             Structure value = cpu.PopStructureEncapsulated();         // new value to set it to
-            string suffixName = cpu.PopStack().ToString().ToUpper();  // name of suffix being set
+            string suffixName = cpu.PopStack().ToString();            // name of suffix being set
             Structure popValue = cpu.PopStructureEncapsulated();      // object to which the suffix is attached.
 
             // We aren't converting the popValue to a Scalar, Boolean, or String structure here because
@@ -882,7 +887,7 @@ namespace kOS.Safe.Compilation
         }
         
         public int Distance { get; set; }
-
+        
         public override void PopulateFromMLFields(List<object> fields)
         {
             // Expect fields in the same order as the [MLField] properties of this class:
@@ -1436,7 +1441,12 @@ namespace kOS.Safe.Compilation
 
             IUserDelegate userDelegate = functionPointer as IUserDelegate;
             if (userDelegate != null)
-                functionPointer = userDelegate.EntryPoint;
+            {
+                if (userDelegate is NoDelegate)
+                    functionPointer = userDelegate; // still leave it as a delegate as a flag to not call the entry point.
+                else
+                    functionPointer = userDelegate.EntryPoint;
+            }
 
             BuiltinDelegate builtinDel = functionPointer as BuiltinDelegate;
             if (builtinDel != null && (! calledFromKOSDelegateCall) )
@@ -1496,6 +1506,10 @@ namespace kOS.Safe.Compilation
 
                 delegateReturn = result.Value;
             }
+            else if (functionPointer is NoDelegate)
+            {
+                delegateReturn = ((NoDelegate)functionPointer).CallWithArgsPushedAlready();
+            }
             // TODO:erendrake This else if is likely never used anymore
             else if (functionPointer is Delegate)
             {
@@ -1506,7 +1520,7 @@ namespace kOS.Safe.Compilation
                 throw new KOSNotInvokableException(functionPointer);
             }
 
-            if (functionPointer is ISuffixResult)
+            if (functionPointer is ISuffixResult || functionPointer is NoDelegate)
             {
                 if (! (delegateReturn is KOSPassThruReturn))
                     cpu.PushStack(delegateReturn); // And now leave the return value on the stack to be read.
@@ -1629,6 +1643,26 @@ namespace kOS.Safe.Compilation
             }
             
             var contextRecord = shouldBeContextRecord as SubroutineContext;
+            
+            // Special case for when the subroutine was really being called as an interrupt
+            // trigger from the kOS CPU itself.  In that case we don't want to leave the
+            // return value atop the stack, and instead want to pop it and use it:
+            if (contextRecord.IsTrigger)
+            {
+                cpu.PopStack(); // already got the return value up above, just ignore it.
+                TriggerInfo trigger = contextRecord.Trigger;
+                // For callbacks, the return value should be preserved in the trigger object
+                // so the C# code can find it there.  For non-callbacks, the return value 
+                // determines whether or not to re-add the trigger so it happens again.
+                // (For C# callbacks, it's always a one-shot call.  The C# code should re-add the
+                // trigger itself if it wants to make the call happen again.)
+                if (trigger.IsCSharpCallback)
+                    trigger.FinishCallback(returnVal);
+                else
+                    if (returnVal is bool || returnVal is BooleanValue )
+                        if (Convert.ToBoolean(returnVal))
+                            cpu.AddTrigger(trigger.EntryPoint, trigger.Closure);
+            }
             
             int destinationPointer = contextRecord.CameFromInstPtr;
             int currentPointer = cpu.InstructionPointer;
@@ -1817,6 +1851,9 @@ namespace kOS.Safe.Compilation
         }
     }
     
+    /// <summary>
+    /// Push the thing atop the stack onto the stack again so there are now two of it atop the stack.
+    /// </summary>
     public class OpcodeDup : Opcode
     {
         protected override string Name { get { return "dup"; } }
@@ -1856,10 +1893,27 @@ namespace kOS.Safe.Compilation
     {
         protected override string Name { get { return "eval"; } }
         public override ByteCode Code { get { return ByteCode.EVAL; } }
+        private bool barewordOkay;
+        
+        public OpcodeEval()
+        {
+            barewordOkay = false;
+        }
+        
+        /// <summary>
+        /// Eval top thing on the stack and replace it with its dereferenced
+        /// value.  If you want to allow bare words like filenames then set argument bareOkay to true
+        /// when constructing.
+        /// </summary>
+        /// <param name="bareOkay"></param>
+        public OpcodeEval(bool bareOkay)
+        {
+            barewordOkay = bareOkay;
+        }
 
         public override void Execute(ICpu cpu)
         {
-            cpu.PushStack(cpu.PopValueEncapsulated());
+            cpu.PushStack(cpu.PopValueEncapsulated(barewordOkay));
         }
     }
 
@@ -2069,7 +2123,7 @@ namespace kOS.Safe.Compilation
         public override void Execute(ICpu cpu)
         {
             int functionPointer = Convert.ToInt32(cpu.PopValue()); // in case it got wrapped in a ScalarIntValue
-            cpu.AddTrigger(functionPointer);
+            cpu.AddTrigger(functionPointer, cpu.GetCurrentClosure());
         }
 
         public override string ToString()
@@ -2099,20 +2153,8 @@ namespace kOS.Safe.Compilation
 
         public override void Execute(ICpu cpu)
         {
-            object arg = cpu.PopValue();
-            cpu.StartWait(Convert.ToDouble(arg));
-        }
-    }
-
-    
-    public class OpcodeEndWait : Opcode
-    {
-        protected override string Name { get { return "endwait"; } }
-        public override ByteCode Code { get { return ByteCode.ENDWAIT; } }
-
-        public override void Execute(ICpu cpu)
-        {
-            cpu.EndWait();
+            double arg = Convert.ToDouble(cpu.PopValue());
+            cpu.YieldProgram(new YieldFinishedGameTimer(arg));
         }
     }
 

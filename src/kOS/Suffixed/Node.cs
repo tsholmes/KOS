@@ -164,7 +164,7 @@ namespace kOS.Suffixed
                     "A KSP limitation makes it impossible to access the manuever nodes of this vessel at this time. " +
                     "(perhaps it's not the active vessel?)");
 
-            vesselRef.patchedConicSolver.RemoveManeuverNode(nodeRef);
+            nodeRef.RemoveSelf();
 
             nodeRef = null;
             vesselRef = null;
@@ -180,7 +180,17 @@ namespace kOS.Suffixed
         {
             if (nodeRef == null) return;
 
-            nodeRef.OnGizmoUpdated(new Vector3d(radialOut, normal, prograde), time);
+            if (nodeRef.attachedGizmo == null)
+            {
+                // Copy the logic from OnGizmoUpdated, excluding the two calls to attachedGizmo
+                nodeRef.DeltaV = new Vector3d(radialOut, normal, prograde);
+                nodeRef.UT = time;
+                nodeRef.solver.UpdateFlightPlan();
+            }
+            else
+            {
+                nodeRef.OnGizmoUpdated(new Vector3d(radialOut, normal, prograde), time);
+            }
         }
 
         private void UpdateNodeDeltaV()

@@ -10,6 +10,8 @@ using System.Collections.Generic;
 using System.Text;
 using kOS.Utilities;
 using Math = System.Math;
+using System.Linq;
+using kOS.Safe;
 
 namespace kOS.Function
 {
@@ -79,33 +81,33 @@ namespace kOS.Function
             }
         }
 
-        private kList GetFileList(Safe.SharedObjects shared)
+        private kList GetFileList(Safe.SafeSharedObjects shared)
         {
             var list = new kList();
             list.AddColumn("Name", 30, ColumnAlignment.Left);
             list.AddColumn("Size", 7, ColumnAlignment.Right);
 
-            if (shared.VolumeMgr != null)
+            list.Title = shared.VolumeMgr.CurrentDirectory.Path.ToString();
+
+            IOrderedEnumerable<VolumeItem> items = shared.VolumeMgr.CurrentDirectory.ListAsLexicon().Values.Cast<VolumeItem>().OrderBy(i => i.Name);
+
+            foreach (VolumeDirectory info in items.OfType<VolumeDirectory>())
             {
-                Volume volume = shared.VolumeMgr.CurrentVolume;
-                if (volume != null)
-                {
-                    list.Title = "Volume " + shared.VolumeMgr.GetVolumeBestIdentifier(volume);
-
-                    foreach (KeyValuePair<string, VolumeFile> pair in volume.FileList)
-                    {
-                        list.AddItem(pair.Key, pair.Value.Size);
-                    }
-
-                    long freeSpace = volume.FreeSpace;
-                    list.Footer = "Free space remaining: " + (freeSpace != Volume.INFINITE_CAPACITY ? freeSpace.ToString() : " infinite");
-                }
+                list.AddItem(info.Name, "<DIR>");
             }
+
+            foreach (VolumeFile info in items.OfType<VolumeFile>())
+            {
+                list.AddItem(info.Name, info.Size);
+            }
+
+            long freeSpace = shared.VolumeMgr.CurrentVolume.FreeSpace;
+            list.Footer = "Free space remaining: " + (freeSpace != Volume.INFINITE_CAPACITY ? freeSpace.ToString() : " infinite");
 
             return list;
         }
 
-        private kList GetVolumeList(Safe.SharedObjects shared)
+        private kList GetVolumeList(Safe.SafeSharedObjects shared)
         {
             var list = new kList { Title = "Volumes" };
             list.AddColumn("ID", 6, ColumnAlignment.Left);
@@ -152,7 +154,7 @@ namespace kOS.Function
 
             foreach (var body in FlightGlobals.fetch.bodies)
             {
-                list.AddItem(body.bodyName, Vector3d.Distance(body.position, shared.Vessel.findWorldCenterOfMass()));
+                list.AddItem(body.bodyName, Vector3d.Distance(body.position, shared.Vessel.CoMD));
             }
 
             return list;
@@ -168,7 +170,7 @@ namespace kOS.Function
             {
                 if (vessel == shared.Vessel) continue;
 
-                var vT = new VesselTarget(vessel, shared);
+                var vT = VesselTarget.CreateOrGetExisting(vessel, shared);
                 list.AddItem(vT.Vessel.vesselName, vT.GetDistance());
             }
 
@@ -187,8 +189,10 @@ namespace kOS.Function
             foreach (Part part in shared.Vessel.Parts)
             {
                 string stageStr = part.inverseStage.ToString();
-                foreach (PartResource resource in part.Resources)
+                PartResource resource;
+                for (int i = 0; i < part.Resources.Count; ++i)
                 {
+                    resource = part.Resources[i];
                     string key = stageStr + "|" + resource.resourceName;
                     if (resourceDict.ContainsKey(key))
                     {

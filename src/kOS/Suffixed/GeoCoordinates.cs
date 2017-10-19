@@ -11,7 +11,7 @@ namespace kOS.Suffixed
 {
     [kOS.Safe.Utilities.KOSNomenclature("GeoCoordinates")]
     [kOS.Safe.Utilities.KOSNomenclature("LatLng", CSharpToKOS = false)]
-    public class GeoCoordinates : SerializableStructure
+    public class GeoCoordinates : SerializableStructure, IHasSharedObjects
     {
         private static string DumpLat = "lat";
         private static string DumpLng = "lng";
@@ -189,7 +189,7 @@ namespace kOS.Suffixed
 
             var targetWorldCoords = Body.GetWorldSurfacePosition(Latitude, Longitude, GetTerrainAltitude() );
 
-            var vector = Vector3d.Exclude(up, targetWorldCoords - Shared.Vessel.findWorldCenterOfMass()).normalized;
+            var vector = Vector3d.Exclude(up, targetWorldCoords - Shared.Vessel.CoMD).normalized;
             var headingQ =
                 Quaternion.Inverse(Quaternion.Euler(90, 0, 0)*Quaternion.Inverse(Quaternion.LookRotation(vector, up))*
                                    Quaternion.LookRotation(north, up));
@@ -226,15 +226,41 @@ namespace kOS.Suffixed
         public Vector GetAltitudePosition(ScalarValue altitude)
         {
             Vector3d latLongCoords = Body.GetWorldSurfacePosition(Latitude, Longitude, altitude);
-            Vector3d hereCoords = Shared.Vessel.findWorldCenterOfMass();
+            Vector3d hereCoords = Shared.Vessel.CoMD;
             return new Vector(latLongCoords - hereCoords);
+        }
+        
+        /// <summary>
+        ///   The pair of velocities representing this spot's velocity due to
+        ///   planetary rotation.
+        /// </summary>
+        /// <returns>velocities pair</returns>
+        public OrbitableVelocity GetVelocities()
+        {
+            return GetAltitudeVelocities(GetTerrainAltitude());
+        }
+
+        /// <summary>
+        ///   The pair of velocities representing this spot's velocity due to
+        ///   planetary rotation, at this (sea level) altitude:
+        /// </summary>
+        /// <returns>velocities pair </returns>
+        public OrbitableVelocity GetAltitudeVelocities(ScalarValue altitude)
+        {
+            Vector3d pos = Body.GetWorldSurfacePosition(Latitude, Longitude, altitude);
+            Vector3d vel = Body.getRFrmVel(pos);
+            CelestialBody shipBody = Shared.Vessel.orbit.referenceBody;
+            if (shipBody == null)
+                return new OrbitableVelocity(new Vector(vel), new Vector(vel));
+            Vector3d srfVel = vel - shipBody.getRFrmVel(Shared.Vessel.CoMD);
+            return new OrbitableVelocity(new Vector(vel), new Vector(srfVel));
         }
 
         private void GeoCoordsInitializeSuffixes()
         {
             AddSuffix("LAT", new Suffix<ScalarValue>(()=> Latitude));
             AddSuffix("LNG", new Suffix<ScalarValue>(()=> Longitude));
-            AddSuffix("BODY", new Suffix<BodyTarget>(()=> new BodyTarget(Body, Shared)));
+            AddSuffix("BODY", new Suffix<BodyTarget>(()=> BodyTarget.CreateOrGetExisting(Body, Shared)));
             AddSuffix("TERRAINHEIGHT", new Suffix<ScalarValue>(GetTerrainAltitude));
             AddSuffix("DISTANCE", new Suffix<ScalarValue>(GetDistanceFrom));
             AddSuffix("HEADING", new Suffix<ScalarValue>(GetHeadingFrom));
@@ -242,14 +268,20 @@ namespace kOS.Suffixed
             AddSuffix("POSITION", new Suffix<Vector>(GetPosition,
                                                      "Get the 3-D space position relative to the ship center, of this lat/long, " +
                                                      "at a point on the terrain surface"));
+            AddSuffix("VELOCITY", new Suffix<OrbitableVelocity>(GetVelocities,
+                                                     "Get the 3-D velocity vectors pair (surface and orbit) at a point on the terrain surface. " +
+                                                     "This is the movement of that spot on the ground due to planetary rotation."));
             AddSuffix("ALTITUDEPOSITION", new OneArgsSuffix<Vector,ScalarValue>(GetAltitudePosition,
                                                                            "Get the 3-D space position relative to the ship center, " +
                                                                            "of this lat/long, at this (sea level) altitude"));
+            AddSuffix("ALTITUDEVELOCITY", new OneArgsSuffix<OrbitableVelocity,ScalarValue>(GetAltitudeVelocities,
+                                                     "Get the 3-D velocity vectors pair (surface and orbit) of this lat/lont at this (sea level) altitude. " +
+                                                     "This is the movement of that spot due to planetary rotation."));
         }
 
         public override string ToString()
         {
-            return "LATLNG(" + Latitude + ", " + Longitude + ")";
+            return string.Format("{0}:GEOPOSITIONLATLNG({1},{2})", Body.GetName(), Latitude, Longitude);
         }
 
         public void SetSharedObjects(SharedObjects sharedObjects)
@@ -263,7 +295,7 @@ namespace kOS.Suffixed
             {
                 {DumpLat, lat},
                 {DumpLng, lng},
-                {DumpBody, new BodyTarget(Body, Shared)}
+                {DumpBody, BodyTarget.CreateOrGetExisting(Body, Shared)}
             };
 
             return dictionary;

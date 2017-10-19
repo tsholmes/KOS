@@ -1,8 +1,12 @@
 ﻿using kOS.Binding;
+using kOS.Communication;
 using kOS.Module;
+using kOS.Safe;
 using kOS.Safe.Encapsulation;
 using kOS.Safe.Encapsulation.Suffixes;
 using kOS.Safe.Exceptions;
+using kOS.Safe.Execution;
+using kOS.Safe.Serialization;
 using kOS.Safe.Utilities;
 using kOS.Suffixed.Part;
 using kOS.Suffixed.PartModuleField;
@@ -10,17 +14,21 @@ using kOS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEngine;
-using kOS.Serialization;
-using kOS.Safe.Serialization;
-using kOS.Safe;
 
 namespace kOS.Suffixed
 {
     [kOS.Safe.Utilities.KOSNomenclature("Vessel")]
-    public class VesselTarget : Orbitable, IKOSTargetable
+    public class VesselTarget : Orbitable, IKOSTargetable, IKOSScopeObserver
     {
         private static string DumpGuid = "guid";
+
+        private ListValue cachedParts = new ListValue();
+        private bool cachedPartsAreStale = true;
+        private bool eventsAreHooked = false;
+
+        private static Dictionary<InstanceKey, WeakReference> instanceCache;
 
         public override Orbit Orbit { get { return Vessel.orbit; } }
 
@@ -29,9 +37,14 @@ namespace kOS.Suffixed
             return Vessel.vesselName;
         }
 
+        public Guid GetGuid()
+        {
+            return Vessel.id;
+        }
+
         public override Vector GetPosition()
         {
-            return new Vector(Vessel.findWorldCenterOfMass() - CurrentVessel.findWorldCenterOfMass());
+            return new Vector(Vessel.CoMD - CurrentVessel.CoMD);
         }
 
         public override OrbitableVelocity GetVelocities()
@@ -74,7 +87,7 @@ namespace kOS.Suffixed
                 pos = pos + offset;
             }
 
-            return new Vector(pos - Shared.Vessel.findWorldCenterOfMass()); // Convert to ship-centered frame.
+            return new Vector(pos - Shared.Vessel.CoMD); // Convert to ship-centered frame.
         }
 
         /// <summary>
@@ -120,7 +133,7 @@ namespace kOS.Suffixed
             if (parent != null)
             {
                 Vector3d pos = GetPositionAtUT(timeStamp);
-                surfVel = new Vector(orbVel - parent.getRFrmVel(pos + Shared.Vessel.findWorldCenterOfMass()));
+                surfVel = new Vector(orbVel - parent.getRFrmVel(pos + Shared.Vessel.CoMD));
             }
             else
                 surfVel = new Vector(orbVel.x, orbVel.y, orbVel.z);
@@ -190,26 +203,127 @@ namespace kOS.Suffixed
                     "HEADING", "PROGRADE", "RETROGRADE", "FACING", "MAXTHRUST", "AVAILABLETHRUST", "VELOCITY", "GEOPOSITION", "LATITUDE",
                     "LONGITUDE",
                     "UP", "NORTH", "BODY", "ANGULARMOMENTUM", "ANGULARVEL", "MASS", "VERTICALSPEED", "SURFACESPEED", "GROUNDSPEED",
-                    "AIRSPEED", "VESSELNAME", "SHIPNAME",
+                    "AIRSPEED", "SHIPNAME",
                     "ALTITUDE", "APOAPSIS", "PERIAPSIS", "SENSOR", "SRFPROGRADE", "SRFRETROGRADE"
                 };
         }
 
-        public VesselTarget()
+        /// <summary>
+        /// All constructors for this class have been restricted because everyone should
+        /// be calling the factory method CreateOrGetExisting() instead.
+        /// </summary>
+        protected VesselTarget()
         {
-            InitializeSuffixes();
+            RegisterInitializer(InitializeSuffixes);
         }
 
-        public VesselTarget(Vessel target, SharedObjects shared)
+        /// <summary>
+        /// All constructors for this class have been restricted because everyone should
+        /// be calling the factory method CreateOrGetExisting() instead.
+        /// </summary>
+        protected VesselTarget(Vessel target, SharedObjects shared)
             : base(shared)
         {
             Vessel = target;
-            InitializeSuffixes();
+            HookEvents();
+            RegisterInitializer(InitializeSuffixes);
         }
 
-        public VesselTarget(SharedObjects shared)
+        /// <summary>
+        /// All constructors for this class have been restricted because everyone should
+        /// be calling the factory method CreateOrGetExisting() instead.
+        /// </summary>
+        protected VesselTarget(SharedObjects shared)
             : this(shared.Vessel, shared)
         {
+        }
+
+        /// <summary>
+        /// Factory method you should use instead of the constructor for this class.
+        /// This will construct a new instance if and only if there isn't already
+        /// an instance made for this particular kOSProcessor, for the given vessel
+        /// (Uniqueness determinied by the vessel's GUID).
+        /// If an instance already exists it will return a reference to that instead of making
+        /// a new one.
+        /// The reason this enforcement is needed is because VesselTarget has callback hooks
+        /// that prevent orphaning and garbage collection.  (The delegate inserted
+        /// into KSP's GameEvents counts as a reference to the VesselTarget.)
+        /// Using this factory method instead of a constructor prevents having thousands of stale
+        /// instances of VesselTarget, which was the cause of Github issue #1980.
+        /// </summary>
+        /// <returns>The or get.</returns>
+        /// <param name="Target">Target.</param>
+        /// <param name="Shared">Shared.</param>
+        public static VesselTarget CreateOrGetExisting(Vessel target, SharedObjects shared)
+        {
+            if (instanceCache == null)
+                instanceCache = new Dictionary<InstanceKey, WeakReference>();
+
+            InstanceKey key = new InstanceKey { ProcessorId = shared.Processor.KOSCoreId, VesselId = target.id };
+            if (instanceCache.ContainsKey(key))
+            {
+                WeakReference weakRef = instanceCache[key];
+                if (weakRef.IsAlive)
+                    return (VesselTarget)weakRef.Target;
+                else
+                    instanceCache.Remove(key);
+            }
+            // If it either wasn't in the cache, or it was but the GC destroyed it by now, make a new one:
+            VesselTarget newlyConstructed = new VesselTarget(target, shared);
+            instanceCache.Add(key, new WeakReference(newlyConstructed));
+            return newlyConstructed;
+        }
+
+        public static void ClearInstanceCache()
+        {
+            if (instanceCache == null)
+                instanceCache = new Dictionary<InstanceKey, WeakReference>();
+            else
+                instanceCache.Clear();
+        }
+
+        public static VesselTarget CreateOrGetExisting(SharedObjects shared)
+        {
+            return CreateOrGetExisting(shared.Vessel, shared);
+        }
+
+        public void HookEvents()
+        {
+            if (!eventsAreHooked)
+            {
+                GameEvents.onVesselDestroy.Add(OnVesselDestroy);
+                GameEvents.onVesselPartCountChanged.Add(OnVesselPartCountChanged);
+                eventsAreHooked = true;
+            }
+        }
+
+        public void UnhookEvents()
+        {
+            // In the way we're firing off ScopeLost, it's possible to
+            // end up triggering this more than once, which is why this
+            // protective boolean check is here:
+            if (eventsAreHooked)
+            {
+                GameEvents.onVesselDestroy.Remove(OnVesselDestroy);
+                GameEvents.onVesselPartCountChanged.Remove(OnVesselPartCountChanged);
+                eventsAreHooked = false;
+            }
+        }
+
+        public void OnVesselDestroy(Vessel v)
+        {
+            if (Vessel.Equals(v))
+            {
+                UnhookEvents();
+                Vessel = null;
+            }
+        }
+
+        public void OnVesselPartCountChanged(Vessel v)
+        {
+            cachedParts.Clear();
+            cachedPartsAreStale = true;
+            GetAllParts();
         }
 
         private Vessel CurrentVessel { get { return Shared.Vessel; } }
@@ -223,21 +337,56 @@ namespace kOS.Suffixed
         // in order to implement the orbit solver later.
         public ScalarValue GetDistance()
         {
-            return Vector3d.Distance(CurrentVessel.findWorldCenterOfMass(), Vessel.findWorldCenterOfMass());
+            return Vector3d.Distance(CurrentVessel.CoMD, Vessel.CoMD);
         }
 
         public Vessel Vessel { get; private set; }
 
         public static string[] ShortCuttableShipSuffixes { get; private set; }
 
+        private int linkCount = 0;
+
+        public int LinkCount
+        {
+            get
+            {
+                return linkCount;
+            }
+            set
+            {
+                linkCount = value;
+
+                // Note, the following check to fire scopelost when link count
+                // hits zero is also happening in Variable.cs, so ScopeLost()
+                // fires twice for some cases.  But this still needs to
+                // be here to catch cases where the link count hits zero
+                // for reasons other than being in a named variable:
+                if (linkCount <= 0)
+                    ScopeLost();
+            }
+        }
+
         public override string ToString()
         {
-            return "SHIP(\"" + Vessel.vesselName + "\")";
+            return "VESSEL(\"" + Vessel.vesselName + "\")";
         }
 
         public ListValue GetAllParts()
         {
-            return PartValueFactory.Construct(Vessel.Parts, Shared);
+            if (cachedPartsAreStale)
+            {
+                cachedParts.Clear();
+                for (int i = 0; i < Vessel.Parts.Count; ++i)
+                {
+                    var part = Vessel.Parts[i];
+                    if (part.State != PartStates.DEAD && part.transform != null)
+                    {
+                        cachedParts.Add(PartValueFactory.Construct(Vessel.Parts[i], Shared));
+                    }
+                }
+                cachedPartsAreStale = false;
+            }
+            return cachedParts;
         }
 
         private ListValue GetPartsDubbed(StringValue searchTerm)
@@ -247,6 +396,20 @@ namespace kOS.Suffixed
             kspParts.AddRange(GetRawPartsNamed(searchTerm));
             kspParts.AddRange(GetRawPartsTitled(searchTerm));
             kspParts.AddRange(GetRawPartsTagged(searchTerm));
+
+            // The "Distinct" operation is there because it's possible for someone to use a tag name that matches the part name.
+            return PartValueFactory.Construct(kspParts.Distinct(), Shared);
+        }
+
+        private ListValue GetPartsDubbedPattern(StringValue searchPattern)
+        {
+            // Prepare case-insensivie regex.
+            Regex r = new Regex(searchPattern, RegexOptions.IgnoreCase);
+            // Get the list of all the parts where the part's API name OR its GUI title or its tag name matches the pattern.
+            List<global::Part> kspParts = new List<global::Part>();
+            kspParts.AddRange(GetRawPartsNamedPattern(r));
+            kspParts.AddRange(GetRawPartsTitledPattern(r));
+            kspParts.AddRange(GetRawPartsTaggedPattern(r));
 
             // The "Distinct" operation is there because it's possible for someone to use a tag name that matches the part name.
             return PartValueFactory.Construct(kspParts.Distinct(), Shared);
@@ -264,6 +427,20 @@ namespace kOS.Suffixed
                 part => String.Equals(part.name, partName, StringComparison.CurrentCultureIgnoreCase));
         }
 
+        private ListValue GetPartsNamedPattern(StringValue partNamePattern)
+        {
+            // Prepare case-insensivie regex.
+            Regex r = new Regex(partNamePattern, RegexOptions.IgnoreCase);
+            return PartValueFactory.Construct(GetRawPartsNamedPattern(r), Shared);
+        }
+
+        private IEnumerable<global::Part> GetRawPartsNamedPattern(Regex partNamePattern)
+        {
+            // Get the list of all the parts where the part's KSP API title matches the pattern:
+            return Vessel.parts.FindAll(
+                part => partNamePattern.IsMatch(part.name));
+        }
+
         private ListValue GetPartsTitled(StringValue partTitle)
         {
             return PartValueFactory.Construct(GetRawPartsTitled(partTitle), Shared);
@@ -276,6 +453,20 @@ namespace kOS.Suffixed
                 part => String.Equals(part.partInfo.title, partTitle, StringComparison.CurrentCultureIgnoreCase));
         }
 
+        private ListValue GetPartsTitledPattern(StringValue partTitlePattern)
+        {
+            // Prepare case-insensivie regex.
+            Regex r = new Regex(partTitlePattern, RegexOptions.IgnoreCase);
+            return PartValueFactory.Construct(GetRawPartsTitledPattern(r), Shared);
+        }
+
+        private IEnumerable<global::Part> GetRawPartsTitledPattern(Regex partTitlePattern)
+        {
+            // Get the list of all the parts where the part's GUI title matches the pattern:
+            return Vessel.parts.FindAll(
+                part => partTitlePattern.IsMatch(part.partInfo.title));
+        }
+
         private ListValue GetPartsTagged(StringValue tagName)
         {
             return PartValueFactory.Construct(GetRawPartsTagged(tagName), Shared);
@@ -286,6 +477,20 @@ namespace kOS.Suffixed
             return Vessel.parts
                 .Where(p => p.Modules.OfType<KOSNameTag>()
                 .Any(tag => String.Equals(tag.nameTag, tagName, StringComparison.CurrentCultureIgnoreCase)));
+        }
+
+        private ListValue GetPartsTaggedPattern(StringValue tagPattern)
+        {
+            // Prepare case-insensivie regex.
+            Regex r = new Regex(tagPattern, RegexOptions.IgnoreCase);
+            return PartValueFactory.Construct(GetRawPartsTaggedPattern(r), Shared);
+        }
+
+        private IEnumerable<global::Part> GetRawPartsTaggedPattern(Regex tagPattern)
+        {
+            return Vessel.parts
+                .Where(p => p.Modules.OfType<KOSNameTag>()
+                .Any(tag => tagPattern.IsMatch(tag.nameTag)));
         }
 
         /// <summary>
@@ -405,12 +610,16 @@ namespace kOS.Suffixed
         private void InitializeSuffixes()
         {
             AddSuffix("PARTSNAMED", new OneArgsSuffix<ListValue, StringValue>(GetPartsNamed));
+            AddSuffix("PARTSNAMEDPATTERN", new OneArgsSuffix<ListValue, StringValue>(GetPartsNamedPattern));
             AddSuffix("PARTSTITLED", new OneArgsSuffix<ListValue, StringValue>(GetPartsTitled));
+            AddSuffix("PARTSTITLEDPATTERN", new OneArgsSuffix<ListValue, StringValue>(GetPartsTitledPattern));
             AddSuffix("PARTSDUBBED", new OneArgsSuffix<ListValue, StringValue>(GetPartsDubbed));
+            AddSuffix("PARTSDUBBEDPATTERN", new OneArgsSuffix<ListValue, StringValue>(GetPartsDubbedPattern));
             AddSuffix("MODULESNAMED", new OneArgsSuffix<ListValue, StringValue>(GetModulesNamed));
             AddSuffix("PARTSINGROUP", new OneArgsSuffix<ListValue, StringValue>(GetPartsInGroup));
             AddSuffix("MODULESINGROUP", new OneArgsSuffix<ListValue, StringValue>(GetModulesInGroup));
             AddSuffix("PARTSTAGGED", new OneArgsSuffix<ListValue, StringValue>(GetPartsTagged));
+            AddSuffix("PARTSTAGGEDPATTERN", new OneArgsSuffix<ListValue, StringValue>(GetPartsTaggedPattern));
             AddSuffix("ALLTAGGEDPARTS", new NoArgsSuffix<ListValue>(GetAllTaggedParts));
             AddSuffix("PARTS", new NoArgsSuffix<ListValue>(GetAllParts));
             AddSuffix("DOCKINGPORTS", new NoArgsSuffix<ListValue>(() => Vessel.PartList("dockingports", Shared)));
@@ -429,21 +638,22 @@ namespace kOS.Suffixed
             AddSuffix("MASS", new Suffix<ScalarValue>(() => Vessel.GetTotalMass()));
             AddSuffix("VERTICALSPEED", new Suffix<ScalarValue>(() => Vessel.verticalSpeed));
             AddSuffix("GROUNDSPEED", new Suffix<ScalarValue>(GetHorizontalSrfSpeed));
-            AddSuffix("SURFACESPEED", new Suffix<ScalarValue>(() => { throw new KOSDeprecationException("0.18.0","SURFACESPEED","GROUNDSPEED",""); }));
-            AddSuffix("AIRSPEED", new Suffix<ScalarValue>(() => (Vessel.orbit.GetVel() - FlightGlobals.currentMainBody.getRFrmVel(Vessel.findWorldCenterOfMass())).magnitude, "the velocity of the vessel relative to the air"));
+            AddSuffix("SURFACESPEED", new Suffix<ScalarValue>(() => { throw new KOSObsoletionException("0.18.0", "SURFACESPEED", "GROUNDSPEED", ""); }));
+            AddSuffix("AIRSPEED", new Suffix<ScalarValue>(() => (Vessel.orbit.GetVel() - FlightGlobals.currentMainBody.getRFrmVel(Vessel.CoMD)).magnitude, "the velocity of the vessel relative to the air"));
             AddSuffix(new[] { "SHIPNAME", "NAME" }, new SetSuffix<StringValue>(() => Vessel.vesselName, RenameVessel, "The KSP name for a craft, cannot be empty"));
             AddSuffix("TYPE", new SetSuffix<StringValue>(() => Vessel.vesselType.ToString(), RetypeVessel, "The Ship's KSP type (e.g. rover, base, probe)"));
             AddSuffix("SENSORS", new Suffix<VesselSensors>(() => new VesselSensors(Vessel)));
-            AddSuffix("TERMVELOCITY", new Suffix<ScalarValue>(() => { throw new KOSAtmosphereDeprecationException("17.2", "TERMVELOCITY", "<None>", string.Empty); }));
-            AddSuffix(new [] { "DYNAMICPRESSURE" , "Q"} , new Suffix<ScalarValue>(() => Vessel.dynamicPressurekPa * ConstantValue.KpaToAtm, "Dynamic Pressure in Atmospheres"));
+            AddSuffix("TERMVELOCITY", new Suffix<ScalarValue>(() => { throw new KOSAtmosphereObsoletionException("17.2", "TERMVELOCITY", "<None>", string.Empty); }));
+            AddSuffix(new[] { "DYNAMICPRESSURE", "Q" }, new Suffix<ScalarValue>(() => Vessel.dynamicPressurekPa * ConstantValue.KpaToAtm, "Dynamic Pressure in Atmospheres"));
             AddSuffix("LOADED", new Suffix<BooleanValue>(() => Vessel.loaded));
             AddSuffix("UNPACKED", new Suffix<BooleanValue>(() => !Vessel.packed));
             AddSuffix("ROOTPART", new Suffix<PartValue>(() => PartValueFactory.Construct(Vessel.rootPart, Shared)));
+            AddSuffix("CONTROLPART", new Suffix<PartValue>(() => PartValueFactory.Construct(GetControlPart(), Shared)));
             AddSuffix("DRYMASS", new Suffix<ScalarValue>(() => Vessel.GetDryMass(), "The Ship's mass when empty"));
             AddSuffix("WETMASS", new Suffix<ScalarValue>(() => Vessel.GetWetMass(), "The Ship's mass when full"));
             AddSuffix("RESOURCES", new Suffix<ListValue<AggregateResourceValue>>(() => AggregateResourceValue.FromVessel(Vessel, Shared), "The Aggregate resources from every part on the craft"));
             AddSuffix("LOADDISTANCE", new Suffix<LoadDistanceValue>(() => new LoadDistanceValue(Vessel)));
-            AddSuffix("ISDEAD", new NoArgsSuffix<BooleanValue>(() => (Vessel.state == Vessel.State.DEAD)));
+            AddSuffix("ISDEAD", new NoArgsSuffix<BooleanValue>(() => (Vessel == null || Vessel.state == Vessel.State.DEAD)));
             AddSuffix("STATUS", new Suffix<StringValue>(() => Vessel.situation.ToString()));
 
             //// Although there is an implementation of lat/long/alt in Orbitible,
@@ -453,21 +663,47 @@ namespace kOS.Suffixed
             AddSuffix("LONGITUDE", new Suffix<ScalarValue>(() => VesselUtils.GetVesselLongitude(Vessel)));
             AddSuffix("ALTITUDE", new Suffix<ScalarValue>(() => Vessel.altitude));
             AddSuffix("CREW", new NoArgsSuffix<ListValue>(GetCrew));
-            AddSuffix("CREWCAPACITY", new NoArgsSuffix<ScalarValue> (GetCrewCapacity));
+            AddSuffix("CREWCAPACITY", new NoArgsSuffix<ScalarValue>(GetCrewCapacity));
+            AddSuffix("CONNECTION", new NoArgsSuffix<VesselConnection>(() => new VesselConnection(Vessel, Shared)));
+            AddSuffix("MESSAGES", new NoArgsSuffix<MessageQueueStructure>(() => GetMessages()));
+
+            AddSuffix("STARTTRACKING", new NoArgsVoidSuffix(StartTracking));
+
+            AddSuffix("SOICHANGEWATCHERS", new NoArgsSuffix<UniqueSetValue<UserDelegate>>(() => Shared.DispatchManager.CurrentDispatcher.GetSOIChangeNotifyees(Vessel)));
         }
 
-        public ScalarValue GetCrewCapacity() {
+        public global::Part GetControlPart()
+        {
+            global::Part res = Vessel.GetReferenceTransformPart(); //this can actually be null
+            if (res != null) { return res; }
+            else { return Vessel.rootPart; } //the root part is used as reference in that case
+        }
+
+        public ScalarValue GetCrewCapacity()
+        {
             return Vessel.GetCrewCapacity();
         }
 
-        public ListValue GetCrew() {
+        public ListValue GetCrew()
+        {
             var crew = new ListValue();
 
-            foreach (var crewMember in Vessel.GetVesselCrew()) {
+            foreach (var crewMember in Vessel.GetVesselCrew())
+            {
                 crew.Add(new CrewMember(crewMember, Shared));
             }
 
             return crew;
+        }
+
+        public MessageQueueStructure GetMessages()
+        {
+            if (Shared.Vessel.id != Vessel.id)
+            {
+                throw new KOSWrongCPUVesselException("MESSAGES");
+            }
+
+            return InterVesselManager.Instance.GetQueue(Shared.Vessel, Shared);
         }
 
         public void ThrowIfNotCPUVessel()
@@ -479,7 +715,8 @@ namespace kOS.Suffixed
         public FlightControl GetFlightControl()
         {
             ThrowIfNotCPUVessel();
-            return FlightControlManager.GetControllerByVessel(Vessel);
+            var flightControl = kOSVesselModule.GetInstance(Shared.Vessel).GetFlightControlParameter("flightcontrol") as FlightControl;
+            return flightControl;
         }
 
         public ScalarValue GetAvailableThrustAt(ScalarValue atmPressure)
@@ -504,15 +741,15 @@ namespace kOS.Suffixed
                 Vessel.vesselName = value;
             }
         }
-        
+
         private ScalarValue GetHorizontalSrfSpeed()
         {
-            // NOTE: THIS Function replaces the functionality of the 
+            // NOTE: THIS Function replaces the functionality of the
             // single KSP API CALL:
             //       Vessel.horizontalSrfSpeed;
             // Which broke in KSP 1.0.3, badly, so we're just going to
             // calculate it manually instead.
-            
+
             // The logic, shamefully copied from the Kerbal Engineer mod,
             // which had the same problem, is this:
             //    Run the Pythagorean Theorem slightly backward.
@@ -529,7 +766,7 @@ namespace kOS.Suffixed
             //        speed_2D = sqrt(srfspd^2 - c^2)
             //    Since C in our case is the vertical speed we want to remove, we get the following formula:
 
-            double squared2DSpeed = Vessel.srfSpeed*Vessel.srfSpeed - Vessel.verticalSpeed*Vessel.verticalSpeed;
+            double squared2DSpeed = Vessel.srfSpeed * Vessel.srfSpeed - Vessel.verticalSpeed * Vessel.verticalSpeed;
 
             // Due to floating point roundoff errrors in the KSP API, the above expression can sometimes come
             // out slightly negative when it should be nearly zero.  (i.e. -0.0000012).  The Sqrt() would
@@ -553,6 +790,17 @@ namespace kOS.Suffixed
         {
             return new Vector(VesselUtils.GetFacing(Vessel).Rotation *
                               new Vector3d(angularVelFromKSP.x, -angularVelFromKSP.z, angularVelFromKSP.y));
+        }
+
+        private void StartTracking()
+        {
+            if (Vessel != null)
+            {
+                if (!Vessel.DiscoveryInfo.HaveKnowledgeAbout(DiscoveryLevels.Appearance))
+                {
+                    KSP.UI.Screens.SpaceTracking.StartTrackingObject(Vessel);
+                }
+            }
         }
 
         public override ISuffixResult GetSuffix(string suffixName)
@@ -627,6 +875,22 @@ namespace kOS.Suffixed
             }
 
             Vessel = vessel;
+        }
+
+        public void ScopeLost()
+        {
+            UnhookEvents();
+        }
+
+        // The data that identifies a unique instance of this class, for use
+        // with the factory method that avoids duplicate instances:
+        private struct InstanceKey
+        {
+            /// <summary>The kOSProcessor Module that built me.</summary>
+            public int ProcessorId { get; set; }
+
+            /// <summary>The KSP vessel object that I'm wrapping.</summary>
+            public Guid VesselId { get; set; }
         }
     }
 }

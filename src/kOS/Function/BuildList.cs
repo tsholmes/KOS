@@ -21,14 +21,14 @@ namespace kOS.Function
                 case "bodies":
                     foreach (CelestialBody cBody in FlightGlobals.fetch.bodies)
                     {                        
-                        list.Add(new BodyTarget(cBody, shared));
+                        list.Add(BodyTarget.CreateOrGetExisting(cBody, shared));
                     }
                     break;
                 case "targets":
                     foreach (var vessel in FlightGlobals.Vessels)
                     {
                         if (vessel == shared.Vessel) continue;
-                        list.Add(new VesselTarget(vessel, shared));
+                        list.Add(VesselTarget.CreateOrGetExisting(vessel, shared));
                     }
                     break;
                 case "resources":
@@ -40,7 +40,7 @@ namespace kOS.Function
                     list = shared.Vessel.PartList(listType, shared);
                     break;
                 case "files":
-                    list = ListValue.CreateList(shared.VolumeMgr.CurrentVolume.FileList.Values.ToList());
+                    list = ListValue.CreateList(shared.VolumeMgr.CurrentDirectory.ListAsLexicon().Values.ToList());
                     break;
                 case "volumes":
                     list = ListValue.CreateList(shared.VolumeMgr.Volumes.Values.ToList());

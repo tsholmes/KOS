@@ -18,9 +18,9 @@ namespace kOS.Suffixed.Part
 
         private void DockingInitializeSuffixes()
         {
-            AddSuffix("AQUIRERANGE", new Suffix<ScalarValue>(() => { throw new Safe.Exceptions.KOSDeprecationException("0.18.0", "AQUIRERANGE", "ACQUIRERANGE", string.Empty); }));
-            AddSuffix("AQUIREFORCE", new Suffix<ScalarValue>(() => { throw new Safe.Exceptions.KOSDeprecationException("0.18.0", "AQUIREFORCE", "ACQUIREFORCE", string.Empty); }));
-            AddSuffix("AQUIRETORQUE", new Suffix<ScalarValue>(() => { throw new Safe.Exceptions.KOSDeprecationException("0.18.0", "AQUIRETORQUE", "ACQUIRETORQUE", string.Empty); }));
+            AddSuffix("AQUIRERANGE", new Suffix<ScalarValue>(() => { throw new Safe.Exceptions.KOSObsoletionException("0.18.0", "AQUIRERANGE", "ACQUIRERANGE", string.Empty); }));
+            AddSuffix("AQUIREFORCE", new Suffix<ScalarValue>(() => { throw new Safe.Exceptions.KOSObsoletionException("0.18.0", "AQUIREFORCE", "ACQUIREFORCE", string.Empty); }));
+            AddSuffix("AQUIRETORQUE", new Suffix<ScalarValue>(() => { throw new Safe.Exceptions.KOSObsoletionException("0.18.0", "AQUIRETORQUE", "ACQUIRETORQUE", string.Empty); }));
             AddSuffix("ACQUIRERANGE", new Suffix<ScalarValue>(() => module.acquireRange));
             AddSuffix("ACQUIREFORCE", new Suffix<ScalarValue>(() => module.acquireForce));
             AddSuffix("ACQUIRETORQUE", new Suffix<ScalarValue>(() => module.acquireTorque));
@@ -36,6 +36,9 @@ namespace kOS.Suffixed.Part
                                                                "docking ports like the inline docking port."));
             AddSuffix("NODEPOSITION", new Suffix<Vector>(GetNodePosition, "The position of the docking node itself rather than the part's center of mass"));
             AddSuffix("NODETYPE", new Suffix<StringValue>(() => module.nodeType, "The type of the docking node"));
+
+            AddSuffix("DOCKWATCHERS", new NoArgsSuffix<UniqueSetValue<UserDelegate>>(() => Shared.DispatchManager.CurrentDispatcher.GetPartCoupleNotifyees(module.part)));
+            AddSuffix("UNDOCKWATCHERS", new NoArgsSuffix<UniqueSetValue<UserDelegate>>(() => Shared.DispatchManager.CurrentDispatcher.GetPartUndockNotifyees(module.part)));
         }
 
         public override ITargetable Target
@@ -77,7 +80,7 @@ namespace kOS.Suffixed.Part
             // of the node where the two docking ports will join together, which will help
             // with docking operations
 
-            return new Vector(module.nodeTransform.position - Shared.Vessel.findWorldCenterOfMass());
+            return new Vector(module.nodeTransform.position - Shared.Vessel.CoMD);
         }
 
         public void DoUndock()

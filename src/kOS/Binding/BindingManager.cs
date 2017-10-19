@@ -1,21 +1,19 @@
-﻿using System;
+﻿using kOS.Safe.Binding;
+using kOS.Safe.Utilities;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using kOS.Safe.Binding;
-using kOS.Safe.Utilities;
 
 namespace kOS.Binding
 {
-    [AssemblyWalk(AttributeType = typeof(BindingAttribute), StaticRegisterMethod = "RegisterMethod")]
-    public class BindingManager : IDisposable, IBindingManager
+    [AssemblyWalk(AttributeType = typeof(BindingAttribute), InherritedType = typeof(SafeBindingBase), StaticRegisterMethod = "RegisterMethod")]
+    public class BindingManager : IBindingManager
     {
         private readonly SharedObjects shared;
-        private readonly List<kOS.Safe.Binding.SafeBinding> bindings = new List<kOS.Safe.Binding.SafeBinding>();
+        private readonly List<kOS.Safe.Binding.SafeBindingBase> bindings = new List<kOS.Safe.Binding.SafeBindingBase>();
         private readonly Dictionary<string, BoundVariable> variables;
         private static readonly Dictionary<BindingAttribute, Type> rawAttributes = new Dictionary<BindingAttribute, Type>();
         private FlightControlManager flightControl;
-
 
         public BindingManager(SharedObjects shared)
         {
@@ -37,7 +35,7 @@ namespace kOS.Binding
             {
                 var t = rawAttributes[attr];
                 if (attr.Contexts.Any() && !attr.Contexts.Intersect(contexts).Any()) continue;
-                var b = (kOS.Safe.Binding.SafeBinding)Activator.CreateInstance(t);
+                var b = (SafeBindingBase)Activator.CreateInstance(t);
                 b.AddTo(shared);
                 bindings.Add(b);
 
@@ -67,9 +65,9 @@ namespace kOS.Binding
             else
             {
                 variable = new BoundVariable
-                    {
-                        Name = name, 
-                    };
+                {
+                    Name = name,
+                };
                 variables.Add(name, variable);
                 shared.Cpu.AddVariable(variable, name, false);
             }
@@ -106,6 +104,11 @@ namespace kOS.Binding
                 AddBoundVariable(name, null, dlg);
             }
         }
+        
+        public bool HasGetter(string name)
+        {
+            return variables.ContainsKey(name);
+        }
 
         public void PreUpdate()
         {
@@ -122,7 +125,6 @@ namespace kOS.Binding
 
         public void PostUpdate()
         {
-
         }
 
         public void ToggleFlyByWire(string paramName, bool enabled)
@@ -130,22 +132,6 @@ namespace kOS.Binding
             if (flightControl != null)
             {
                 flightControl.ToggleFlyByWire(paramName, enabled);
-            }
-        }
-
-        public void UnBindAll()
-        {
-            if (flightControl != null)
-            {
-                flightControl.UnBind ();
-            }
-        }
-
-        public void Dispose()
-        {
-            if (flightControl != null)
-            {
-                flightControl.Dispose();
             }
         }
 

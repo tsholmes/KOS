@@ -3,6 +3,9 @@ using kOS.Safe.Persistence;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using kOS.Safe.Exceptions;
+using kOS.Safe.Utilities;
+using kOS.Module;
 
 namespace kOS.Screen
 {
@@ -13,11 +16,20 @@ namespace kOS.Screen
     public class KOSTextEditPopup : KOSManagedWindow
     {
         private const int FRAME_THICKNESS = 8;
-        private const int FONT_HEIGHT = 12;
         private const string EXIT_BUTTON_TEXT = "(E)xit";
         private const string SAVE_BUTTON_TEXT = "(S)ave";
         private const string RELOAD_BUTTON_TEXT = "(R)eload";
 
+        private int fontHeight = 12;
+        private Font font;
+        // A list of fonts including the user's choice plus a few fallback options if the user's choice isn't working:
+        private string[] tryFontNames =
+            new string[] {
+               "_User's choice_",
+               "Consolas Bold", "Consolas", "Monaco Bold", "Monaco", "Liberation Mono Bold", "Liberation Mono",
+               "Courier New Bold", "Courier Bold", "Courier New", "Courier", "Arial" };
+        private string prevConfigFontName = "";
+        private int prevConfigFontSize = 12;
         private Rect innerCoords;
         private Rect saveCoords;
         private Rect exitCoords;
@@ -25,12 +37,11 @@ namespace kOS.Screen
         private Rect reloadCoords;
         private Rect resizeButtonCoords;
         private TermWindow term; // The terminal that this popup is attached to.
-        private string fileName = "";
-        private string loadingFileName = "";
+        private GlobalPath loadingPath;
         private Volume volume;
         private Volume loadingVolume;
         private string contents = "";
-        private readonly Texture2D resizeImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
+        private Texture2D resizeImage;
         private bool resizeMouseDown;
         private Vector2 resizeOldSize; // width and height it had when the mouse button went down on the resize button.
         private bool isDirty; // have any edits occurred since last load or save?
@@ -38,13 +49,13 @@ namespace kOS.Screen
         private DelegateDialog dialog;
         private Vector2 scrollPosition; // tracks where within the text box it's scrolled to.
         private bool consumeEvent;
+        private GUIStyle textWidgetStyle;
 
         public KOSTextEditPopup()
         {
             UniqueId = 100; // This is expected to be overridden, but Unity requires that
                             // KosTextEditPopup() be a constructor that takes zero arguments,
                             // so the real WindowId has to be set after construction.
-            WindowRect = new Rect(0, 0, 470, 280); // bogus starting value will be changed later when attaching to a terminal.
         }
 
         public void Freeze(bool newVal)
@@ -54,21 +65,54 @@ namespace kOS.Screen
 
         public void Awake()
         {
-            var gObj = new GameObject("texteditConfirm", typeof(DelegateDialog));
-            DontDestroyOnLoad(gObj);
-            dialog = (DelegateDialog)gObj.GetComponent(typeof(DelegateDialog));
+            WindowRect = new Rect(0, 0, 470, 280); // bogus starting value will be changed later when attaching to a terminal.
+
+            // Load dummy textures
+            resizeImage = new Texture2D(0, 0, TextureFormat.DXT1, false);
+
+            dialog = gameObject.AddComponent<DelegateDialog>();
             var urlGetter = new WWW(string.Format("file://{0}GameData/kOS/GFX/resize-button.png", KSPUtil.ApplicationRootPath.Replace("\\", "/")));
             urlGetter.LoadImageIntoTexture(resizeImage);
+
+            GetFont();
         }
 
-        public void AttachTo(TermWindow termWindow, Volume attachVolume, string attachFileName = "")
+        private void GetFont()
+        {
+            fontHeight = GetConfigFontSize();
+            tryFontNames[0] = GetConfigFontName();
+
+            font = AssetManager.Instance.GetSystemFontByNameAndSize(tryFontNames, fontHeight, false);
+
+            textWidgetStyle = new GUIStyle(HighLogic.Skin.textArea);
+            textWidgetStyle.font = font;
+
+            prevConfigFontSize = fontHeight;
+            prevConfigFontName = tryFontNames[0];
+        }
+
+        private string GetConfigFontName()
+        {
+            return SafeHouse.Config.TerminalFontName;
+        }
+
+        private int GetConfigFontSize()
+        {
+            // For a few moments upon first activating the text editor popup, the
+            // TermWindow isn't attached yet so the term member is null.  Return a
+            // dummy value at first but then correct it later the next time this is
+            // queired after the term is attached:
+            return (term != null ) ? term.GetFontSize() : 8;
+        }
+
+        public void AttachTo(TermWindow termWindow, Volume attachVolume, GlobalPath path)
         {
             term = termWindow;
             WindowRect = new Rect(0, 0, 470, 280); // will be resized and moved in onGUI.
             frozen = false;
             loadingVolume = attachVolume;
-            loadingFileName = attachFileName;
-            LoadContents(attachVolume, attachFileName);
+            loadingPath = path;
+            LoadContents(attachVolume, path);
         }
 
         public bool Contains(Vector2 posAbs)
@@ -121,6 +165,10 @@ namespace kOS.Screen
         {
             if (!IsOpen) return;
 
+            // If the config options changed the font for me, reload it:
+            if ((! prevConfigFontName.Equals(GetConfigFontName())) || prevConfigFontSize != GetConfigFontSize())
+                GetFont();
+
             CalcOuterCoords(); // force windowRect to lock to bottom edge of the parents
             CalcInnerCoords();
 
@@ -144,7 +192,7 @@ namespace kOS.Screen
 
         public void SaveContents()
         {
-            if (volume.Save(fileName, new FileContent(contents)) == null)
+            if (volume.SaveFile(loadingPath, new FileContent(contents)) == null)
             {
                 // For some reason the normal trap that prints exceptions on
                 // the terminal doesn't work here in this part of the code,
@@ -153,7 +201,7 @@ namespace kOS.Screen
                 throw new Exception("File Save Failed from Text Editor.");
             }
             isDirty = false;
-            term.Print("[Saved changes to " + fileName + "]");
+            term.Print("[Saved changes to " + loadingPath + "]");
         }
 
         protected void ReloadContents()
@@ -164,19 +212,19 @@ namespace kOS.Screen
                 DelegateLoadContents(this);
         }
 
-        public void LoadContents(Volume vol, string fName)
+        public void LoadContents(Volume vol, GlobalPath path)
         {
             if (isDirty)
             {
                 Freeze(true);
                 InvokeDirtySaveLoadDialog();
                 loadingVolume = vol;
-                loadingFileName = fName;
+                loadingPath = path;
             }
             else
             {
                 loadingVolume = vol;
-                loadingFileName = fName;
+                loadingPath = path;
                 DelegateLoadContents(this);
             }
         }
@@ -192,7 +240,7 @@ namespace kOS.Screen
             choices.Add("Cancel");
             actions.Add(DelegateCancel);
 
-            dialog.Invoke(this, "\"" + fileName + "\" has been edited.  Save it before exiting?", choices, actions);
+            dialog.Invoke(this, "\"" + loadingPath + "\" has been edited.  Save it before exiting?", choices, actions);
         }
 
         protected void InvokeDirtySaveLoadDialog()
@@ -206,7 +254,7 @@ namespace kOS.Screen
             choices.Add("Cancel");
             actions.Add(DelegateCancel);
 
-            dialog.Invoke(this, "\"" + fileName + "\" has been edited.  Save before loading \"" + loadingFileName + "\"?", choices, actions);
+            dialog.Invoke(this, "\"" + loadingPath + "\" has been edited.  Save before loading \"" + loadingPath.Name + "\"?", choices, actions);
         }
 
         protected void InvokeReloadConfirmDialog()
@@ -218,7 +266,7 @@ namespace kOS.Screen
             choices.Add("No");
             actions.Add(DelegateCancel);
 
-            dialog.Invoke(this, "\"" + fileName + "\" has been edited.  Throw away changes and reload?", choices, actions);
+            dialog.Invoke(this, "\"" + loadingPath + "\" has been edited.  Throw away changes and reload?", choices, actions);
         }
 
         protected static void DelegateSaveExit(KOSTextEditPopup me)
@@ -242,18 +290,24 @@ namespace kOS.Screen
 
         protected static void DelegateLoadContents(KOSTextEditPopup me)
         {
-            me.volume = me.loadingVolume;
-            me.fileName = me.loadingFileName;
-            VolumeFile file = me.volume.Open(me.fileName);
-            if (file == null)
+            VolumeItem item = me.loadingVolume.Open(me.loadingPath);
+            if (item == null)
             {
                 me.term.Print("[New File]");
                 me.contents = "";
             }
-            else
+            else if (item is VolumeFile)
             {
+                VolumeFile file = item as VolumeFile;
+                me.loadingPath = GlobalPath.FromVolumePath(item.Path, me.loadingPath.VolumeId);
                 me.contents = file.ReadAll().String;
             }
+            else
+            {
+                throw new KOSPersistenceException("Path '" + me.loadingPath + "' points to a directory");
+            }
+
+            me.volume = me.loadingVolume;
             me.isDirty = false;
         }
 
@@ -305,8 +359,8 @@ namespace kOS.Screen
 
             // Seems to be no way to move more than one line at
             // a time - so have to do this:
-            int pos = Math.Min(editor.pos, contents.Length - 1);
-            int rows = ((int)innerCoords.height) / FONT_HEIGHT;
+            int pos = Math.Min(editor.cursorIndex, contents.Length - 1);
+            int rows = ((int)innerCoords.height) / fontHeight;
             while (rows > 0 && pos >= 0)
             {
                 if (contents[pos] == '\n')
@@ -322,8 +376,8 @@ namespace kOS.Screen
 
             // Seems to be no way to move more than one line at
             // a time - so have to do this:
-            int pos = Math.Min(editor.pos, contents.Length - 1);
-            int rows = ((int)innerCoords.height) / FONT_HEIGHT;
+            int pos = Math.Min(editor.cursorIndex, contents.Length - 1);
+            int rows = ((int)innerCoords.height) / fontHeight;
             while (rows > 0 && pos < contents.Length)
             {
                 if (contents[pos] == '\n')
@@ -387,12 +441,12 @@ namespace kOS.Screen
 
         protected void DrawWindow(int windowId)
         {
-            GUI.contentColor = Color.green;
+            GUI.contentColor = Color.yellow;
 
             GUILayout.BeginArea(innerCoords);
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
             int preLength = contents.Length;
-            contents = GUILayout.TextArea(contents);
+            contents = GUILayout.TextArea(contents, textWidgetStyle);
             int postLength = contents.Length;
             GUILayout.EndScrollView();
             GUILayout.EndArea();
@@ -444,9 +498,9 @@ namespace kOS.Screen
             if (!IsOpen) return;
 
             innerCoords = new Rect(FRAME_THICKNESS,
-                                    FRAME_THICKNESS + 1.5f * FONT_HEIGHT,
+                                    FRAME_THICKNESS + 1.5f * fontHeight,
                                     WindowRect.width - 2 * FRAME_THICKNESS,
-                                    WindowRect.height - 2 * FRAME_THICKNESS - 2 * FONT_HEIGHT);
+                                    WindowRect.height - 2 * FRAME_THICKNESS - 2 * fontHeight);
 
             Vector2 labSize = GUI.skin.label.CalcSize(new GUIContent(BuildTitle()));
             Vector2 exitSize = GUI.skin.box.CalcSize(new GUIContent(EXIT_BUTTON_TEXT));
@@ -490,7 +544,7 @@ namespace kOS.Screen
 
             var editor = GetWidgetController();
             Vector2 pos = editor.graphicalCursorPos;
-            float usableHeight = innerCoords.height - 2.5f * FONT_HEIGHT;
+            float usableHeight = innerCoords.height - 2.5f * fontHeight;
             if (pos.y < scrollPosition.y)
                 scrollPosition.y = pos.y;
             else if (pos.y > scrollPosition.y + usableHeight)
@@ -514,9 +568,7 @@ namespace kOS.Screen
 
         protected string BuildTitle()
         {
-            if (volume.Name.Length > 0)
-                return fileName + " on " + volume.Name;
-            return fileName + " on local volume";  // Don't know which number because no link to VolumeManager from this class.
+            return loadingPath.ToString();
         }
     }
 }

@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using kOS.Safe.Execution;
+using kOS.Safe.Encapsulation;
 
 namespace kOS.Safe.Test.Opcode
 {
     public class FakeCpu : ICpu
     {
         private readonly Stack<object> fakeStack;
+        public bool IsPoppingContext { get { return false; } }
 
         public FakeCpu()
         {
@@ -168,8 +170,22 @@ namespace kOS.Safe.Test.Opcode
         {
             get { throw new NotImplementedException(); }
         }
+        public TriggerInfo AddTrigger(int triggerFunctionPointer, List<VariableScope> closure)
+        {
+            throw new NotImplementedException();
+        }
 
-        public void AddTrigger(int triggerFunctionPointer)
+        public TriggerInfo AddTrigger(UserDelegate del, List<kOS.Safe.Encapsulation.Structure> args)
+        {
+            throw new NotImplementedException();
+        }
+
+        public TriggerInfo AddTrigger(UserDelegate del, params kOS.Safe.Encapsulation.Structure[] args)
+        {
+            throw new NotImplementedException();
+        }
+
+        public TriggerInfo AddTrigger(TriggerInfo trigger)
         {
             throw new NotImplementedException();
         }
@@ -179,7 +195,12 @@ namespace kOS.Safe.Test.Opcode
             throw new NotImplementedException();
         }
 
-        public void StartWait(double waitTime)
+        public void RemoveTrigger(TriggerInfo trigger)
+        {
+            throw new NotImplementedException();
+        }
+
+        public double StartWait(double waitTime)
         {
             throw new NotImplementedException();
         }
@@ -198,6 +219,11 @@ namespace kOS.Safe.Test.Opcode
         {
             throw new NotImplementedException();
         }
+        
+        public void YieldProgram(YieldFinishedDetector yieldTracker)
+        {
+            throw new NotImplementedException();            
+        }
 
         public void BreakExecution(bool manual)
         {
@@ -205,6 +231,21 @@ namespace kOS.Safe.Test.Opcode
         }
 
         public void AddVariable(Variable variable, string identifier, bool local, bool overwrite = false)
+        {
+            throw new NotImplementedException();
+        }
+        
+        public IProgramContext GetCurrentContext()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void AddPopContextNotifyee(IPopContextNotifyee notifyee)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void RemovePopContextNotifyee(IPopContextNotifyee notifyee)
         {
             throw new NotImplementedException();
         }
@@ -250,19 +291,17 @@ namespace kOS.Safe.Test.Opcode
             throw new NotImplementedException();
         }
 
-
         public IProgramContext GetInterpreterContext()
         {
             throw new NotImplementedException();
         }
 
-        public IProgramContext SwitchToProgramContext()
+        public Compilation.Opcode GetCurrentOpcode ()
         {
-            throw new NotImplementedException();
+            throw new NotImplementedException ();
         }
 
-
-        public Compilation.Opcode GetCurrentOpcode()
+        public IProgramContext SwitchToProgramContext()
         {
             throw new NotImplementedException();
         }

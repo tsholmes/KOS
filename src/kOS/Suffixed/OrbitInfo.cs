@@ -1,9 +1,8 @@
 ﻿using kOS.Safe.Encapsulation;
 using kOS.Safe.Encapsulation.Suffixes;
-using System;
+using kOS.Safe.Exceptions;
 using kOS.Serialization;
-using kOS.Safe.Serialization;
-using kOS.Safe;
+using System;
 
 namespace kOS.Suffixed
 {
@@ -38,7 +37,7 @@ namespace kOS.Suffixed
             AddSuffix("NAME", new Suffix<StringValue>(() => name));
             AddSuffix("APOAPSIS", new Suffix<ScalarValue>(() => orbit.ApA));
             AddSuffix("PERIAPSIS", new Suffix<ScalarValue>(() => orbit.PeA));
-            AddSuffix("BODY", new Suffix<BodyTarget>(() => new BodyTarget(orbit.referenceBody, Shared)));
+            AddSuffix("BODY", new Suffix<BodyTarget>(() => BodyTarget.CreateOrGetExisting(orbit.referenceBody, Shared)));
             AddSuffix("PERIOD", new Suffix<ScalarValue>(() => orbit.period));
             AddSuffix("INCLINATION", new Suffix<ScalarValue>(() => orbit.inclination));
             AddSuffix("ECCENTRICITY", new Suffix<ScalarValue>(() => orbit.eccentricity));
@@ -46,13 +45,15 @@ namespace kOS.Suffixed
             AddSuffix("SEMIMINORAXIS", new Suffix<ScalarValue>(() => orbit.semiMinorAxis));
             AddSuffix(new[]{"LAN", "LONGITUDEOFASCENDINGNODE"}, new Suffix<ScalarValue>(() => orbit.LAN));
             AddSuffix("ARGUMENTOFPERIAPSIS", new Suffix<ScalarValue>(() => orbit.argumentOfPeriapsis));
-            AddSuffix("TRUEANOMALY", new Suffix<ScalarValue>(() => Utilities.Utils.DegreeFix(orbit.trueAnomaly,0.0)));
-            AddSuffix("MEANANOMALYATEPOCH", new Suffix<ScalarValue>(() => Utilities.Utils.DegreeFix(orbit.meanAnomalyAtEpoch * 180.0 / Math.PI, 0.0)));
+            AddSuffix("TRUEANOMALY", new Suffix<ScalarValue>(() => Utilities.Utils.DegreeFix(Utilities.Utils.RadiansToDegrees(orbit.trueAnomaly),0.0)));
+            AddSuffix("MEANANOMALYATEPOCH", new Suffix<ScalarValue>(() => Utilities.Utils.DegreeFix(Utilities.Utils.RadiansToDegrees(orbit.meanAnomalyAtEpoch), 0.0)));
+            AddSuffix("EPOCH", new Suffix<ScalarValue>(() => orbit.epoch));
             AddSuffix("TRANSITION", new Suffix<StringValue>(() => orbit.patchEndTransition.ToString()));
             AddSuffix("POSITION", new Suffix<Vector>(() => GetPositionAtUT( new TimeSpan(Planetarium.GetUniversalTime() ) )));
             AddSuffix("VELOCITY", new Suffix<OrbitableVelocity>(() => GetVelocityAtUT( new TimeSpan(Planetarium.GetUniversalTime() ) )));
             AddSuffix("NEXTPATCH", new Suffix<OrbitInfo>(GetNextPatch));
             AddSuffix("HASNEXTPATCH", new Suffix<BooleanValue>(GetHasNextPatch));
+            AddSuffix("NEXTPATCHETA", new Suffix<ScalarValue>(GetNextPatchETA));
 
             //TODO: Determine if these vectors are different than POSITION and VELOCITY
             AddSuffix("VSTATEVECTOR", new Suffix<Vector>(() => new Vector(orbit.vel)));
@@ -70,7 +71,7 @@ namespace kOS.Suffixed
         /// <returns></returns>
         public Vector GetPositionAtUT( TimeSpan timeStamp )
         {
-            return new Vector( orbit.getPositionAtUT( timeStamp.ToUnixStyleTime() ) - Shared.Vessel.findWorldCenterOfMass() );
+            return new Vector( orbit.getPositionAtUT( timeStamp.ToUnixStyleTime() ) - Shared.Vessel.CoMD );
         }
 
         /// <summary>
@@ -91,20 +92,37 @@ namespace kOS.Suffixed
             if (parent != null)
             {
                 Vector3d pos = GetPositionAtUT( timeStamp );
-                surfVel = new Vector( orbVel - parent.getRFrmVel( pos + Shared.Vessel.findWorldCenterOfMass()) );
+                surfVel = new Vector( orbVel - parent.getRFrmVel( pos + Shared.Vessel.CoMD) );
             }
             else
                 surfVel = new Vector( orbVel.X, orbVel.Y, orbVel.Z );
             return new OrbitableVelocity( orbVel, surfVel );
         }
-        
+
         /// <summary>
         /// Return the next OrbitInfo after this one (i.e. transitional encounter)
         /// </summary>
         /// <returns>an OrbitInfo, or a null if there isn't any.</returns>
         private OrbitInfo GetNextPatch()
         {
-            return ! GetHasNextPatch() ? null : new OrbitInfo(orbit.nextPatch,Shared);
+            if (GetHasNextPatch())
+            {
+                return new OrbitInfo(orbit.nextPatch, Shared);
+            }
+            throw new KOSSituationallyInvalidException("Cannot get next patch when no additional patches exist.  Try checking the HASNEXTPATCH suffix.");
+        }
+
+        /// <summary>
+        /// Returns the ETA of when the nextpatch will happen
+        /// </summary>
+        /// <returns>A double representing the ETA in seconds, or a zero if there isn't any.</returns>
+        private ScalarValue GetNextPatchETA()
+        {
+            if (GetHasNextPatch())
+            {
+                return orbit.EndUT - Planetarium.GetUniversalTime();
+            }
+            throw new KOSSituationallyInvalidException("Cannot get eta to next patch when no additional patches exist.  Try checking the HASNEXTPATCH suffix.");
         }
 
         /// <summary>

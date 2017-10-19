@@ -13,6 +13,8 @@ namespace kOS.Safe.Screen
         private int topRow;
         private readonly List<IScreenBufferLine> buffer;
         private readonly List<SubBuffer> subBuffers;
+
+        public Queue<char> CharInputQueue { get; private set; }
         
         public int BeepsPending {get; set;}
         
@@ -27,7 +29,7 @@ namespace kOS.Safe.Screen
         public bool VisualBeep {get; set;}
         public int CharacterPixelWidth { get; set; }
         public int CharacterPixelHeight { get; set; }
-        public float Brightness { get; set; }
+        public double Brightness { get; set; }
 
         
         public int ColumnCount { get; private set; }
@@ -64,6 +66,8 @@ namespace kOS.Safe.Screen
             Notifyees = new List<ResizeNotifier>();
 
             subBuffers = new List<SubBuffer>();
+            
+            CharInputQueue = new Queue<char>();
 
             RowCount = DEFAULT_ROWS;
             ColumnCount = DEFAULT_COLUMNS;
@@ -79,6 +83,11 @@ namespace kOS.Safe.Screen
         public void RemoveResizeNotifier(ResizeNotifier notifier)
         {
             Notifyees.Remove(notifier);
+        }
+
+        public void RemoveAllResizeNotifiers()
+        {
+            Notifyees.Clear();
         }
 
         public void SetSize(int rows, int columns)

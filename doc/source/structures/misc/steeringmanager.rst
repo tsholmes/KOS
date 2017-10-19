@@ -19,7 +19,6 @@ The SteeringManager is a bound variable, not a suffix to a specific vessel.  Thi
 .. note::
 
     .. versionadded:: 0.18
-
         The :struct:`SteeringManager` was added to improve the accuracy of kOS's cooked steering.  While this code is a significant improvement over the old system, it is not perfect.  Specifically it does not properly calculate the effects of control surfaces, nor does it account for atmospheric drag.  It also does not adjust for asymmetric RCS or Engine thrust.  It does allow for some modifications to the built in logic through the torque adjustments and factors.  However, if there is a condition for which the new steering manager is unable to provide accurate control, you should continue to fall back to raw controls.
 
 
@@ -34,16 +33,16 @@ The SteeringManager is a bound variable, not a suffix to a specific vessel.  Thi
     :attr:`ENABLED`                      :struct:`boolean`         Returns true if the `SteeringManager` is currently controlling the vessel
     :attr:`TARGET`                       :struct:`Direction`       The direction that the vessel is currently steering towards
     :meth:`RESETPIDS()`                  none                      Called to call `RESET` on all steering PID loops.
+    :meth:`RESETTODEFAULT()`             none                      Called to reset all steering tuning parameters.
     :attr:`SHOWFACINGVECTORS`            :struct:`boolean`         Enable/disable display of ship facing, target, and world coordinates vectors.
     :attr:`SHOWANGULARVECTORS`           :struct:`boolean`         Enable/disable display of angular rotation vectors
-    :attr:`SHOWTHRUSTVECTORS`            :struct:`boolean`         Enable/disable display of engine thrust vectors
-    :attr:`SHOWRCSVECTORS`               :struct:`boolean`         Enable/disable display of rcs thrust vectors
     :attr:`SHOWSTEERINGSTATS`            :struct:`boolean`         Enable/disable printing of the steering information on the terminal
     :attr:`WRITECSVFILES`                :struct:`boolean`         Enable/disable logging steering to csv files.
     :attr:`PITCHTS`                      :struct:`scalar` (s)      Settling time for the pitch torque calculation.
     :attr:`YAWTS`                        :struct:`scalar` (s)      Settling time for the yaw torque calculation.
     :attr:`ROLLTS`                       :struct:`scalar` (s)      Settling time for the roll torque calculation.
     :attr:`MAXSTOPPINGTIME`              :struct:`scalar` (s)      The maximum amount of stopping time to limit angular turn rate.
+    :attr:`ROLLCONTROLANGLERANGE`        :struct:`scalar` (deg)    The maximum value of :attr:`ANGLEERROR` for which to control roll.
     :attr:`ANGLEERROR`                   :struct:`scalar` (deg)    The angle between vessel:facing and target directions
     :attr:`PITCHERROR`                   :struct:`scalar` (deg)    The angular error in the pitch direction
     :attr:`YAWERROR`                     :struct:`scalar` (deg)    The angular error in the yaw direction
@@ -55,6 +54,11 @@ The SteeringManager is a bound variable, not a suffix to a specific vessel.  Thi
     :attr:`YAWTORQUEFACTOR`              :struct:`scalar`          Multiplicative adjustment to yaw torque (calculated)
     :attr:`ROLLTORQUEFACTOR`             :struct:`scalar`          Multiplicative adjustment to roll torque (calculated)
     ==================================== ========================= =============
+
+.. warning::
+    .. versionadded:: v0.20.1
+        The suffixes ``SHOWRCSVECTORS`` and ``SHOWTHRUSTVECTORS`` were
+        deprecated with the move to using stock torque calculation with KSP 1.1.
 
 .. attribute:: SteeringManager:PITCHPID
 
@@ -107,6 +111,14 @@ The SteeringManager is a bound variable, not a suffix to a specific vessel.  Thi
 
     Resets the integral sum to zero for all six steering PID Loops.
 
+.. method:: SteeringManager:RESETTODEFAULT
+
+    :return: none
+
+    Resets the various tuning parameters of the :struct:`SteeringManager` to
+    their default values as if the ship had just been loaded.  This internally
+    will also call :meth:`SteeringManager:RESETPIDS`.
+
 .. attribute:: SteeringManager:SHOWFACINGVECTORS
 
     :type: :ref:`boolean <boolean>`
@@ -120,20 +132,6 @@ The SteeringManager is a bound variable, not a suffix to a specific vessel.  Thi
     :access: Get/Set
 
     Setting this suffix to true will cause the steering manager to display graphical vectors (see :struct:`VecDraw`) representing the current and target angular velocities in the pitch, yaw, and roll directions.  Setting to false will hide the vectors, as will disabling locked steering.
-
-.. attribute:: SteeringManager:SHOWTHRUSTVECTORS
-
-    :type: :ref:`boolean <boolean>`
-    :access: Get/Set
-
-    Setting this suffix to true will cause the steering manager to display graphical vectors (see :struct:`VecDraw`) representing the thrust and torque for each active engine.  Setting to false will hide the vectors, as will disabling locked steering.
-
-.. attribute:: SteeringManager:SHOWRCSVECTORS
-
-    :type: :ref:`boolean <boolean>`
-    :access: Get/Set
-
-    Setting this suffix to true will cause the steering manager to display graphical vectors (see :struct:`VecDraw`) representing the thrust and torque for each active RCS block.  Setting to false will hide the vectors, as will disabling locked steering.
 
 .. attribute:: SteeringManager:SHOWSTEERINGSTATS
 
@@ -180,6 +178,20 @@ The SteeringManager is a bound variable, not a suffix to a specific vessel.  Thi
     .. note::
 
         This setting affects all three of the :ref:`rotational velocity PID's <cooked_omega_pid>` at once (pitch, yaw, and roll), rather than affecting the three axes individually one at a time.
+
+.. attribute:: SteeringManager:ROLLCONTROLANGLERANGE
+
+    :type: :ref:`scalar <scalar>` (deg)
+    :access: Get/Set
+
+    The maximum value of :attr:`ANGLEERROR<SteeringManager:ANGLEERROR>` for
+    which kOS will attempt to respond to error along the roll axis.  If this
+    is set to 5 (the default value), the facing direction will need to be within
+    5 degrees of the target direction before it actually attempts to roll the
+    ship.  Setting the value to 180 will effectivelly allow roll control at any
+    error amount.  When :attr:`ANGLEERROR<SteeringManager:ANGLEERROR>` is
+    greater than this value, kOS will only attempt to kill all roll angular
+    velocity.  The value is clamped between 180 and 1e-16.
 
 .. attribute:: SteeringManager:ANGLEERROR
 

@@ -4,32 +4,41 @@ Infernal Robotics
 =================
 
 - Download: http://kerbal.curseforge.com/ksp-mods/220267
-- Alternative download: https://kerbalstuff.com/mod/8/Magic_Smoke_Industries_Infernal_Robotics
-- Forum thread, including full instructions: http://forum.kerbalspaceprogram.com/threads/116064
+- Alternative download: https://github.com/MagicSmokeIndustries/InfernalRobotics/releases
+- Forum thread, including full instructions: http://forum.kerbalspaceprogram.com/index.php?/topic/104535-/
+
+Infernal Robotics might not be installed on your copy of the game.
+Your script can test whether or not it's installed by using
+the boolean expression ``addons:available("ir")``.
 
 Infernal Robotics introduces robotics parts to the game, letting you create moving or spinning contraptions that just aren't possible under stock KSP.
+
 .. figure:: http://i.imgur.com/O94LBvF.png
 
 Starting version 0.20 of the Infernal Robotics, mod creators introduced API to for easier access to robotic features.
 
-Access structure IRAddon via `ADDONS:IR`.
+Access structure IRAddon via ``ADDONS:IR``.
 
 .. structure:: IRAddon
 
     ===================================== ==================================== =============
      Suffix                                Type                                 Description
     ===================================== ==================================== =============
-     :attr:`AVAILABLE`                     :ref:`boolean <boolean>` (readonly)  Returns True if mod Infernal Robotics is installed, available to KOS and applicable to current craft.
-     :attr:`GROUPS`                        List (readonly)                      Lists all  Servo Groups for the Vessel on which CPU runs this command (see details below).
-     :attr:`ALLSERVOS`                     List (readonly)                      Lists all  Servos for the Vessel on which CPU runs this command (see details below).
+     :attr:`AVAILABLE`                     :ref:`boolean <boolean>` (readonly)  Returns True if mod Infernal Robotics is installed, available to KOS and applicable to current craft.  It is better to use ``addons:available("rt")``.
+     :attr:`GROUPS`                        List of :struct:`IRControlGroup`     Lists all  Servo Groups for the Vessel on which CPU runs this command (see details below).
+     :attr:`ALLSERVOS`                     List of :struct:`IRServo`            Lists all  Servos for the Vessel on which CPU runs this command (see details below).
+     :meth:`PARTSERVOS(Part)`              List of :struct:`IRServo`            Lists all Servos for the provided part
     ===================================== ==================================== =============
 
 
 
 .. attribute:: IRAddon:AVAILABLE
 
-    :type: :ref:`boolean <boolean>`
+    :type: :struct:`Boolean`
     :access: Get only
+
+    It is better to first call ``ADDONS:AVAILABLE("IR")`` to find out if the
+    plugin exists.
 
     Returns True if mod Infernal Robotics is installed, available to KOS and applicable to current craft.
     Example of use::
@@ -41,7 +50,7 @@ Access structure IRAddon via `ADDONS:IR`.
 
 .. attribute:: IRAddon:GROUPS
 
-    :type: List of :struct:`IRControlGroup` objects
+    :type: :struct:`List` of :struct:`IRControlGroup` objects
     :access: Get only
 
     Lists all Servo Groups for the Vessel on which the script is being executed. On IR versions prior to 0.21.5 will always return servo groups for current focused vessel.
@@ -55,7 +64,7 @@ Access structure IRAddon via `ADDONS:IR`.
 
 .. attribute:: IRAddon:ALLSERVOS
 
-    :type: List of :struct:`IRServo` objects
+    :type: :struct:`List` of :struct:`IRServo` objects
     :access: Get only
 
     Lists all Servos for the Vessel on which the script is being executed. On IR versions prior to 0.21.5 will always return servos for current focused vessel.
@@ -65,6 +74,13 @@ Access structure IRAddon via `ADDONS:IR`.
         {
             print "Name: " + s:NAME + ", position: " + s:POSITION.
         }
+
+.. method:: IRAddon:PARTSERVOS(part)
+
+    :parameter part: :struct:`Part` for which to return servos
+    :type: :struct:`List` of :struct:`IRServo` objects
+
+    Lists all Servos found on the given :struct:`Part`.
 
 
 .. structure:: IRControlGroup

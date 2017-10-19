@@ -192,7 +192,7 @@ namespace kOS.Suffixed
             CelestialBody parent = GetParentBody();
             if (parent == null) //happens when this Orbitable is the Sun
                 return 0.0;
-            Vector3d unityWorldPos = GetPosition() + (Vector3d)Shared.Vessel.findWorldCenterOfMass();
+            Vector3d unityWorldPos = GetPosition() + (Vector3d)Shared.Vessel.CoMD;
             return Utils.DegreeFix(parent.GetLatitude(unityWorldPos),-180);
         }
         public double PositionToLongitude( Vector pos )
@@ -200,7 +200,7 @@ namespace kOS.Suffixed
             CelestialBody parent = GetParentBody();
             if (parent == null) //happens when this Orbitable is the Sun
                 return 0.0;
-            Vector3d unityWorldPos = GetPosition() + (Vector3d)Shared.Vessel.findWorldCenterOfMass();
+            Vector3d unityWorldPos = GetPosition() + (Vector3d)Shared.Vessel.CoMD;
             return Utils.DegreeFix( parent.GetLongitude(unityWorldPos), -180.0 );
         }
         public double PositionToAltitude( Vector pos )
@@ -208,7 +208,7 @@ namespace kOS.Suffixed
             CelestialBody parent = GetParentBody();
             if (parent == null) //happens when this Orbitable is the Sun
                 return 0.0;
-            Vector3d unityWorldPos = GetPosition() + (Vector3d)Shared.Vessel.findWorldCenterOfMass();
+            Vector3d unityWorldPos = GetPosition() + (Vector3d)Shared.Vessel.CoMD;
             return parent.GetAltitude(unityWorldPos);
         }
 
@@ -217,7 +217,7 @@ namespace kOS.Suffixed
             AddSuffix("NAME", new Suffix<StringValue>(GetName));
             AddSuffix("APOAPSIS", new Suffix<ScalarValue>(() => Orbit.ApA));
             AddSuffix("PERIAPSIS", new Suffix<ScalarValue>(() => Orbit.PeA));
-            AddSuffix("BODY", new Suffix<BodyTarget>(() => new BodyTarget(Orbit.referenceBody, Shared)));
+            AddSuffix("BODY", new Suffix<BodyTarget>(() => BodyTarget.CreateOrGetExisting(Orbit.referenceBody, Shared)));
             AddSuffix(new [] {"HASBODY", "HASOBT", "HASORBIT"}, new NoArgsSuffix<BooleanValue>(HasBody));
             AddSuffix("UP", new Suffix<Direction>(() => new Direction(GetUpVector(), false)));
             AddSuffix("NORTH", new Suffix<Direction>(() => new Direction(GetNorthVector(), false)));

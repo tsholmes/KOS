@@ -1,5 +1,4 @@
 ﻿using kOS.AddOns.RemoteTech;
-using kOS.Safe.Encapsulation;
 using kOS.Safe.Persistence;
 using kOS.Safe.Utilities;
 using System;
@@ -7,9 +6,15 @@ using System.Text;
 
 namespace kOS.Persistence
 {
+
+    /// <summary>
+    /// Persistence extensions needed to store Harddisks in KSP saves files. Perhaps one day we could use serialization instead
+    /// and simplify all of this (and make it unit testable too).
+    /// </summary>
     public static class PersistenceExtensions
     {
-        private const string FILENAME_VALUE_STRING = "filename";
+        private const string FilenameValueString = "filename";
+        private const string DirnameValueString = "dirname";
 
         public static Harddisk ToHardDisk(this ConfigNode configNode)
         {
@@ -22,32 +27,83 @@ namespace kOS.Persistence
             if (configNode.HasValue("volumeName"))
                 toReturn.Name = configNode.GetValue("volumeName");
 
-            foreach (ConfigNode fileNode in configNode.GetNodes("file"))
-            {
-                toReturn.Save(fileNode.ToHarddiskFile(toReturn));
-            }
+            toReturn.RootHarddiskDirectory = configNode.ToHarddiskDirectory(toReturn, VolumePath.EMPTY);
+
             return toReturn;
         }
 
-        public static HarddiskFile ToHarddiskFile(this ConfigNode configNode, Harddisk harddisk)
+        private static HarddiskDirectory ToHarddiskDirectory(this ConfigNode configNode, Harddisk harddisk, VolumePath path)
         {
-            var filename = configNode.GetValue(FILENAME_VALUE_STRING);
+            HarddiskDirectory directory = new HarddiskDirectory(harddisk, path);
 
-            FileContent fileContent = Decode(configNode.GetValue("line"));
-            harddisk.Save(filename, fileContent);
-            return new HarddiskFile(harddisk, filename);
+            foreach (ConfigNode fileNode in configNode.GetNodes("file"))
+            {
+                directory.CreateFile(fileNode.GetValue(FilenameValueString), fileNode.ToHarddiskFile(harddisk, directory));
+            }
+
+            foreach (ConfigNode dirNode in configNode.GetNodes("directory"))
+            {
+                string dirName = dirNode.GetValue(DirnameValueString);
+
+                directory.CreateDirectory(dirName, dirNode.ToHarddiskDirectory(harddisk, VolumePath.FromString(dirName, path)));
+            }
+
+            return directory;
+        }
+
+        public static FileContent ToHarddiskFile(this ConfigNode configNode, Harddisk harddisk, HarddiskDirectory directory)
+        {
+            try
+            {
+                string content = null;
+                if (configNode.TryGetValue("ascii", ref content)) // ASCII files just get decoded from the ConfigNode safe representation
+                {
+                    return new FileContent(PersistenceUtilities.DecodeLine(content));
+                }
+                if (configNode.TryGetValue("binary", ref content)) // binary files get decoded from Base64 and gzip
+                {
+                    return new FileContent(PersistenceUtilities.DecodeBase64ToBinary(content));
+                }
+                if (configNode.TryGetValue("line", ref content)) // fall back to legacy logic
+                {
+                    return Decode(content);
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeHouse.Logger.LogError(string.Format("Exception caught loading file information: {0}\n\nStack Trace:\n{1}", ex.Message, ex.StackTrace));
+            }
+            SafeHouse.Logger.LogError(string.Format("Error loading file information from ConfigNode at path {0} on hard disk {1}", directory.Path, harddisk.Name));
+            return new FileContent("");  // if there was an error, just return a blank file.
         }
 
         public static ConfigNode ToConfigNode(this Harddisk harddisk, string nodeName)
         {
-            var node = new ConfigNode(nodeName);
+            var node = harddisk.RootHarddiskDirectory.ToConfigNode(nodeName);
             node.AddValue("capacity", harddisk.Capacity);
             node.AddValue("volumeName", harddisk.Name);
 
-            foreach (VolumeFile volumeFile in harddisk.FileList.Values)
+            return node;
+        }
+
+        public static ConfigNode ToConfigNode(this HarddiskDirectory directory, string nodeName)
+        {
+            ConfigNode node = new ConfigNode(nodeName);
+            node.AddValue(DirnameValueString, directory.Name);
+
+            foreach (VolumeItem item in directory)
             {
-                var file = (HarddiskFile) volumeFile;
-                node.AddNode(file.ToConfigNode("file"));
+                if (item is HarddiskDirectory)
+                {
+                    HarddiskDirectory dir = item as HarddiskDirectory;
+                    node.AddNode(dir.ToConfigNode("directory"));
+                }
+
+                if (item is HarddiskFile)
+                {
+                    HarddiskFile file = item as HarddiskFile;
+                    node.AddNode(file.ToConfigNode("file"));
+                }
             }
 
             return node;
@@ -56,23 +112,27 @@ namespace kOS.Persistence
         public static ConfigNode ToConfigNode(this HarddiskFile file, string nodeName)
         {
             var node = new ConfigNode(nodeName);
-            node.AddValue(FILENAME_VALUE_STRING, file.Name);
+            node.AddValue(FilenameValueString, file.Name);
 
             FileContent content = file.ReadAll();
 
             if (content.Category == FileCategory.KSM)
             {
-                node.AddValue("line", PersistenceUtilities.EncodeBase64(content.Bytes));
+                node.AddValue("binary", PersistenceUtilities.EncodeBase64(content.Bytes));
+            }
+            else if (content.Category == FileCategory.BINARY)
+            {
+                node.AddValue("binary", PersistenceUtilities.EncodeBase64(content.Bytes));
             }
             else
             {
                 if (SafeHouse.Config.UseCompressedPersistence)
                 {
-                    node.AddValue("line", EncodeBase64(content.String));
+                    node.AddValue("binary", PersistenceUtilities.EncodeBase64(content.Bytes));
                 }
                 else
                 {
-                    node.AddValue("line", PersistenceUtilities.EncodeLine(content.String));
+                    node.AddValue("ascii", PersistenceUtilities.EncodeLine(content.String));
                 }
             }
             return node;
@@ -84,32 +144,12 @@ namespace kOS.Persistence
             {
                 return new FileContent(PersistenceUtilities.DecodeBase64ToBinary(input));
             }
-            catch (FormatException)
+            catch // if there is an exception of any kind decoding, fall back to standard decoding
             {
-                // standard encoding
                 string decodedString = PersistenceUtilities.DecodeLine(input);
                 return new FileContent(decodedString);
             }
         }
 
-        public static bool CheckRange(this Volume volume, Vessel vessel)
-        {
-            var archive = volume as RemoteTechArchive;
-            return archive == null || archive.CheckRange(vessel);
-        }
-
-        // Provide a way to check the range limit of the archive without requesting the current volume (which throws an error if not in range)
-        public static bool CheckCurrentVolumeRange(this IVolumeManager volumeManager, Vessel vessel)
-        {
-            var rtManager = volumeManager as RemoteTechVolumeManager;
-            if (rtManager == null)
-                return true;
-            return rtManager.CheckCurrentVolumeRange(vessel);
-        }
-
-        private static string EncodeBase64(string input)
-        {
-            return PersistenceUtilities.EncodeBase64(Encoding.ASCII.GetBytes(input));
-        }
     }
 }

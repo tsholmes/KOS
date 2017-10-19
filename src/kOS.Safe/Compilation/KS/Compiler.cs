@@ -5,6 +5,7 @@ using kOS.Safe.Exceptions;
 using kOS.Safe.Utilities;
 using kOS.Safe.Execution;
 using kOS.Safe.Encapsulation;
+using System.Text;
 
 namespace kOS.Safe.Compilation.KS
 {
@@ -20,7 +21,7 @@ namespace kOS.Safe.Compilation.KS
         private short lastColumn;
         private readonly List<BreakInfo> breakList = new List<BreakInfo>();
         private readonly List<int> returnList = new List<int>();
-        private readonly List<string> triggerRemoveNames = new List<string>();
+        private readonly List<string> triggerKeepNames = new List<string>();
         private bool nowCompilingTrigger;
         private bool compilingSetDestination;
         private bool identifierIsVariable;
@@ -36,6 +37,7 @@ namespace kOS.Safe.Compilation.KS
         private readonly Dictionary<ParseNode, Scope> scopeMap = new Dictionary<ParseNode, Scope>();
         private CompilerOptions options;
         private const bool TRACE_PARSE = false; // set to true to Debug Log each ParseNode as it's visited.
+        private string boilerplateLoadAndRunEntryLabel;
 
         private enum StorageModifier {
             /// <summary>The storage will definitely be at the localmost scope.</summary>
@@ -45,6 +47,7 @@ namespace kOS.Safe.Compilation.KS
             /// <summary>The storage will be whatever scope it happens to find the first hit, or global if not found.</summary>
             LAZYGLOBAL
         };
+        
         // Because the Compiler object can be re-used, with its Compile()
         // method called a second time, we can't rely on the constructor or C#'s rules about default
         // variable values to guarantee these are all set properly.  They might be leftover values
@@ -61,7 +64,7 @@ namespace kOS.Safe.Compilation.KS
             lastColumn = 0;
             breakList.Clear();
             returnList.Clear();
-            triggerRemoveNames.Clear();
+            triggerKeepNames.Clear();
             nowCompilingTrigger = false;
             compilingSetDestination = false;
             identifierIsSuffix = false;
@@ -73,6 +76,10 @@ namespace kOS.Safe.Compilation.KS
             forcedNextLabel = String.Empty;
             scopeStack.Clear();
             scopeMap.Clear();
+
+            // Zero-th instruction of the loader/runner that will have to be built by something
+            // outside of Compiler.cs (probably ProgramBuilder.cs - look there to find it).
+            boilerplateLoadAndRunEntryLabel = "@LR00";
         }
 
         public CodePart Compile(int startLineNum, ParseTree tree, Context context, CompilerOptions options)
@@ -232,40 +239,71 @@ namespace kOS.Safe.Compilation.KS
         
         private void IterateUserFunctions(ParseNode node, Action<ParseNode> action)
         {
+            bool doChildren = true;
+            bool doInvoke = false;
             switch (node.Token.Type)
             {
-                // Statements that can have other statements nested inside them need to be
-                // recursed through to search for instances of the special statements
-                // we are looking for here:
+                // Any statement which might have another statement nested inside
+                // it should be recursed into to check if that other statement
+                // might be a lock, or a user function (anonymous or named).
                 //
-                case TokenType.Start:
-                case TokenType.instruction_block:
-                case TokenType.instruction:
-                case TokenType.if_stmt:
-                case TokenType.fromloop_stmt:
-                case TokenType.until_stmt:
-                case TokenType.for_stmt:
-                case TokenType.on_stmt:
-                case TokenType.when_stmt:
-                case TokenType.declare_function_clause:
-                    foreach (ParseNode childNode in node.Nodes)
-                        IterateUserFunctions(childNode, action);
-                    break;
+                // We assume by default a node should be recursed into unless explicitly
+                // told otherwise here.  Doing it this way around is the safer default
+                // because of what happens when we fail to mention a part of speech here.
+                // If we fail to recurse when we should have, that can be fatal as it makes
+                // the compiler produce wrong code.  But if we do recurse when we didn't have
+                // to, that just wastes a bit of CPU time, which isn't as bad.
+                //
+                case TokenType.onoff_trailer:
+                case TokenType.stage_stmt:
+                case TokenType.clear_stmt:
+                case TokenType.break_stmt:
+                case TokenType.preserve_stmt:
+                case TokenType.run_stmt:
+                case TokenType.compile_stmt:
+                case TokenType.list_stmt:
+                case TokenType.reboot_stmt:
+                case TokenType.shutdown_stmt:
+                case TokenType.unset_stmt:
+                case TokenType.sci_number:
+                case TokenType.number:
+                case TokenType.INTEGER:
+                case TokenType.DOUBLE:
+                case TokenType.PLUSMINUS:
+                case TokenType.MULT:
+                case TokenType.DIV:
+                case TokenType.POWER:
+                case TokenType.IDENTIFIER:
+                case TokenType.FILEIDENT:
+                case TokenType.STRING:
+                case TokenType.TRUEFALSE:
+                case TokenType.COMPARATOR:
+                case TokenType.AND:
+                case TokenType.OR:
+                case TokenType.directive:
+                    doChildren = false;
+                    break;                
 
                 // These are the statements we're searching for to work on here:
                 //
-                case TokenType.declare_stmt: // for DECLARE FUNCTION's
-                    // for catching functions nested inside functions, or locks nested inside functions:
-                    // Depth-first: Walk my children first, then iterate through me.  Thus the functions nested inside
-                    // me have already been compiled before I start compiling my own code.  This allows my code to make
-                    // forward-calls into my nested functions, because they've been compiled and we know where they live
-                    // in memory now.
-                    foreach (ParseNode childNode in node.Nodes)
-                        IterateUserFunctions(childNode, action);                    
-
-                    action.Invoke(node);
+                case TokenType.declare_stmt: // for DECLARE FUNCTION's.
+                case TokenType.instruction_block: // just in case it's an anon function's body
+                    doInvoke = true;
                     break;
+                default:
+                    break;
+
             }
+            // for catching functions nested inside functions, or locks nested inside functions:
+            // Depth-first: Walk my children first, then iterate through me.  Thus the functions nested inside
+            // me have already been compiled before I start compiling my own code.  This allows my code to make
+            // forward-calls into my nested functions, because they've been compiled and we know where they live
+            // in memory now.
+            if (doChildren)
+                foreach (ParseNode childNode in node.Nodes)
+                    IterateUserFunctions(childNode, action);
+            if (doInvoke)
+                action.Invoke(node);
         }
 
         /// <summary>
@@ -396,9 +434,6 @@ namespace kOS.Safe.Compilation.KS
                     PreProcessChildNodes(node);
                     PreProcessWhenStatement(node);
                     break;
-                case TokenType.run_stmt:
-                    PreProcessRunStatement(node);
-                    break;
             }
         }
 
@@ -413,76 +448,85 @@ namespace kOS.Safe.Compilation.KS
         private void PreProcessOnStatement(ParseNode node)
         {
             NodeStartHousekeeping(node);
+            nextBraceIsFunction = true; // triggers aren't really functions but act like it a lot.
+
             int expressionHash = ConcatenateNodes(node).GetHashCode();
             string triggerIdentifier = "on-" + expressionHash.ToString();
             Trigger triggerObject = context.Triggers.GetTrigger(triggerIdentifier);
-            triggerObject.SetTriggerVariable(GetIdentifierText(node));
 
             currentCodeSection = triggerObject.Code;
-            AddOpcode(new OpcodePush(triggerObject.VariableNameOldValue));
-            AddOpcode(new OpcodePush(triggerObject.VariableName));
+            // Put the old value on top of the stack for equals comparison later:
+            AddOpcode(new OpcodePush(triggerObject.OldValueIdentifier));
+            AddOpcode(new OpcodeEval());
+            // eval the expression for the new value, and leave it on the stack twice.
+            VisitNode(node.Nodes[1]);
+            AddOpcode(new OpcodeEval());
+            AddOpcode(new OpcodeDup());
+            // Put one of those two copies of the new value into the old value identifier for next time:
+            AddOpcode(new OpcodePush(triggerObject.OldValueIdentifier));
+            AddOpcode(new OpcodeSwap());
+            AddOpcode(new OpcodeStoreGlobal());
+            // Use the other dup'ed copy of the new value to actually do the equals
+            // comparison with the old value that's still under it on the stack:
             AddOpcode(new OpcodeCompareEqual());
-            AddOpcode(new OpcodeLogicNot());
-            Opcode branchOpcode = AddOpcode(new OpcodeBranchIfFalse());
+            OpcodeBranchIfFalse branchToBody = new OpcodeBranchIfFalse();
+            branchToBody.Distance = 3;
+            AddOpcode(branchToBody);
+            AddOpcode(new OpcodePush(true));       // wasn't triggered yet, so preserve.
+            AddOpcode(new OpcodeReturn((short)0)); // premature return because it wasn't triggered
 
             // make flag that remembers whether to remove trigger:
             // defaults to true = removal should happen.
-            string triggerRemoveVarName = "$remove-" + triggerIdentifier;
-            PushTriggerRemoveName(triggerRemoveVarName);
-            AddOpcode(new OpcodePush(triggerRemoveVarName));
-            AddOpcode(new OpcodePush(true));
+            string triggerKeepName = "$keep-" + triggerIdentifier;
+            PushTriggerKeepName(triggerKeepName);
+            AddOpcode(new OpcodePush(triggerKeepName));
+            AddOpcode(new OpcodePush(false));
             AddOpcode(new OpcodeStoreGlobal());
 
             VisitNode(node.Nodes[2]);
 
-            // Reset the "old value" so the boolean has to change *again* to re-trigger
-            AddOpcode(new OpcodePush(triggerObject.VariableNameOldValue));
-            AddOpcode(new OpcodePush(triggerObject.VariableName));
-            AddOpcode(new OpcodeStore());
-
-            // Skip removing the trigger if PRESERVE happened:
-            PopTriggerRemoveName(); // Throw away return value.
-            AddOpcode(new OpcodePush(triggerRemoveVarName));
-            Opcode skipRemoval = AddOpcode(new OpcodeBranchIfFalse());
-
-            AddOpcode(new OpcodePushRelocateLater(null), triggerObject.GetFunctionLabel());
-            AddOpcode(new OpcodeRemoveTrigger());
-            Opcode eofOpcode = AddOpcode(new OpcodeEOF());
-            branchOpcode.DestinationLabel = eofOpcode.Label;
-            skipRemoval.DestinationLabel = eofOpcode.Label;
+            // PRESERVE will determine whether or not the trigger returns true (true means
+            // re-enable the trigger upon exit.)
+            PopTriggerKeepName();
+            AddOpcode(new OpcodePush(triggerKeepName));
+            AddOpcode(new OpcodeReturn((short)0));
+            
+            nextBraceIsFunction = false;
         }
 
         private void PreProcessWhenStatement(ParseNode node)
         {
             NodeStartHousekeeping(node);
+            nextBraceIsFunction = true; // triggers aren't really functions but act like it a lot.
+            
             int expressionHash = ConcatenateNodes(node).GetHashCode();
             string triggerIdentifier = "when-" + expressionHash.ToString();
             Trigger triggerObject = context.Triggers.GetTrigger(triggerIdentifier);
 
             currentCodeSection = triggerObject.Code;
             VisitNode(node.Nodes[1]);
-            Opcode branchOpcode = AddOpcode(new OpcodeBranchIfFalse());
+            OpcodeBranchIfTrue branchToBody = new OpcodeBranchIfTrue();
+            branchToBody.Distance = 3;
+            AddOpcode(branchToBody);
+            AddOpcode(new OpcodePush(true));       // wasn't triggered yet, so preserve.
+            AddOpcode(new OpcodeReturn((short)0)); // premature return because it wasn't triggered
 
             // make flag that remembers whether to remove trigger:
             // defaults to true = removal should happen.
-            string triggerRemoveVarName = "$remove-" + triggerIdentifier;
-            PushTriggerRemoveName(triggerRemoveVarName);
-            AddOpcode(new OpcodePush(triggerRemoveVarName));
-            AddOpcode(new OpcodePush(true));
+            string triggerKeepName = "$keep-" + triggerIdentifier;
+            PushTriggerKeepName(triggerKeepName);
+            AddOpcode(new OpcodePush(triggerKeepName));
+            AddOpcode(new OpcodePush(false));
             AddOpcode(new OpcodeStoreGlobal());
 
             VisitNode(node.Nodes[3]);
 
-            // Skip removing the trigger if PRESERVE happened:
-            PopTriggerRemoveName(); // Throw away return value.
-            AddOpcode(new OpcodePush(triggerRemoveVarName));
-            Opcode skipRemoval = AddOpcode(new OpcodeBranchIfFalse());
-
-            AddOpcode(new OpcodePushRelocateLater(null), triggerObject.GetFunctionLabel());
-            AddOpcode(new OpcodeRemoveTrigger());
-            Opcode eofOpcode = AddOpcode(new OpcodeEOF());
-            branchOpcode.DestinationLabel = eofOpcode.Label;
-            skipRemoval.DestinationLabel = eofOpcode.Label;
+            // PRESERVE will determine whether or not the trigger returns true (true means
+            // re-enable the trigger upon exit.)
+            PopTriggerKeepName();
+            AddOpcode(new OpcodePush(triggerKeepName));
+            AddOpcode(new OpcodeReturn((short)0));
+            nextBraceIsFunction = false;
         }
 
         /// <summary>
@@ -493,7 +537,13 @@ namespace kOS.Safe.Compilation.KS
         /// </summary>
         private string ConcatenateNodes(ParseNode node)
         {
-            return string.Format("{0}{1}{2}", context.NumCompilesSoFar, GetContainingScopeId(node), ConcatenateNodesRecurse(node));
+            LineCol whereNodeIs = GetLineCol(node);
+            return string.Format("{0}L{1}C{2}{3}{4}",
+                                 context.NumCompilesSoFar,
+                                 whereNodeIs.Line,
+                                 whereNodeIs.Column,
+                                 GetContainingScopeId(node),
+                                 ConcatenateNodesRecurse(node));
         }
         
         private string ConcatenateNodesRecurse(ParseNode node)
@@ -518,7 +568,8 @@ namespace kOS.Safe.Compilation.KS
             ParseNode bodyNode;
             
             ParseNode lastSubNode = node.Nodes[node.Nodes.Count-1];
-            if (IsLockStatement(node))
+            bool isLock = IsLockStatement(node);
+            if (isLock)
             {
                 funcIdentifier = lastSubNode.Nodes[1].Token.Text;
                 bodyNode = lastSubNode.Nodes[3];
@@ -535,6 +586,7 @@ namespace kOS.Safe.Compilation.KS
                 context.UserFunctions.GetUserFunction(funcIdentifier, storageType == StorageModifier.GLOBAL ? (Int16)0 : GetContainingScopeId(node), node);
             int expressionHash = ConcatenateNodes(bodyNode).GetHashCode();
             userFuncObject.GetUserFunctionOpcodes(expressionHash);
+            userFuncObject.IsFunction = !isLock;
             if (userFuncObject.IsSystemLock())
                 BuildSystemTrigger(userFuncObject);
         }
@@ -642,7 +694,7 @@ namespace kOS.Safe.Compilation.KS
                 bodyNode = lastSubNode.Nodes[2]; // The INSTRUCTION_BLOCK of: DEFINE FUNCTION IDENT INSTRUCTION_BLOCK.
             }
             else
-                return; // In principle this shouldn't have ever been called in this case.
+                return; // Should only be the case when scanning elements for anonymous functions
 
             UserFunction userFuncObject = context.UserFunctions.GetUserFunction(
                 userFuncIdentifier,
@@ -667,6 +719,11 @@ namespace kOS.Safe.Compilation.KS
 
                 if (userFuncObject.IsSystemLock())
                 {
+                    AddOpcode(new OpcodePush(userFuncObject.ScopelessPointerIdentifier));
+                    AddOpcode(new OpcodeExists());
+                    var branch = new OpcodeBranchIfTrue();
+                    branch.Distance = 4;
+                    AddOpcode(branch);
                     AddOpcode(new OpcodePush(userFuncObject.ScopelessPointerIdentifier));
                     AddOpcode(new OpcodePushRelocateLater(null), userFuncObject.DefaultLabel);
                     AddOpcode(new OpcodeStore());
@@ -749,11 +806,12 @@ namespace kOS.Safe.Compilation.KS
             AddOpcode(new OpcodePush(new KOSArgMarkerType())); // need these for all locks now.
             AddOpcode(new OpcodeCall(func.ScopelessPointerIdentifier));
             AddOpcode(new OpcodeStoreGlobal());
-            AddOpcode(new OpcodeEOF());
+            AddOpcode(new OpcodePush(true)); // always preserve this particular kind of trigger.
+            AddOpcode(new OpcodeReturn((short)0));
             lastLine = rememberLastLine;
             currentCodeSection = rememberCurrentCodeSection;
         }
-        
+
         /// <summary>
         /// Get the instruction_block this node is immediately inside of.
         /// Gives a null if the node isn't in one (it's global).
@@ -765,108 +823,26 @@ namespace kOS.Safe.Compilation.KS
             return node;
         }
 
-        private void PreProcessRunStatement(ParseNode node)
+        private void PushTriggerKeepName(string newLabel)
         {
-            NodeStartHousekeeping(node);
-            if (options.LoadProgramsInSameAddressSpace)
-            {
-                int progNameIndex = 1;
-                if (node.Nodes[1].Token.Type == TokenType.ONCE)
-                {
-                    ++progNameIndex;
-                }
-                bool hasOn = node.Nodes.Any(cn => cn.Token.Type == TokenType.ON);
-                if (!hasOn)
-                {
-                    string subprogramName = node.Nodes[progNameIndex].Token.Text; // It assumes it already knows at compile-time how many unique program filenames exist, 
-                    if (!context.Subprograms.Contains(subprogramName)) // which it uses to decide how many of these blocks to make,
-                    {                                                   // which is why we can't defer run filenames until runtime like we can with the others.
-                        Subprogram subprogramObject = context.Subprograms.GetSubprogram(subprogramName);
-                        // Function code
-                        currentCodeSection = subprogramObject.FunctionCode;
-                        // verify if the program has been loaded
-                        Opcode functionStart = AddOpcode(new OpcodePush(subprogramObject.PointerIdentifier));
-                        // Becuse of Cpu.SaveAndClearPointers(), the subprogram's pointer identifier won't
-                        // exist in this program context until it has been compiled once.  If it does exist,
-                        // then skip the compiling step and just run the code that's already there:
-                        AddOpcode(new OpcodeExists());
-                        // branch to where the compiler loads the code:
-                        OpcodeBranchIfFalse branchToLoad = new OpcodeBranchIfFalse();
-                        AddOpcode(branchToLoad);
-                        // Now the top of the stack should be the argument pushed by
-                        // VisitRunStatement that flags if there was a 'once' keyword:
-                        // If there was no 'once', then branch to where the already
-                        // loaded code gets run, even though it's been run before:
-                        OpcodeBranchIfFalse branchToRun = new OpcodeBranchIfFalse();
-                        AddOpcode(branchToRun);
-                        // If it falls through to here, that means the code was already
-                        // loaded, AND the 'once' keyword was present in the instance
-                        // where this loading function got called, so just do nothing
-                        // and return.
-                        AddOpcode(new OpcodePush(0));
-                        AddOpcode(new OpcodeReturn(0));
-                        // if it wasn't then load it now:
-                        // First throw away the 'once' argument since it doesn't matter when
-                        // we're going to be compiling regardless:
-                        OpcodePop firstOpcodeOfLoadSection = new OpcodePop();
-                        AddOpcode(firstOpcodeOfLoadSection);
-                        branchToLoad.DestinationLabel = firstOpcodeOfLoadSection.Label;
-                        AddOpcode(new OpcodePush(subprogramObject.PointerIdentifier));
-                        AddOpcode(new OpcodePush(new KOSArgMarkerType()));
-                        AddOpcode(new OpcodePush(subprogramObject.SubprogramName));
-                        AddOpcode(new OpcodePush(null)); // The output filename - only used for compile-to-file rather than for running.
-                        AddOpcode(new OpcodeCall("load()"));
-                        AddOpcode(new OpcodePop()); // all functions now return a value even if it's a dummy we ignore.
-                        // store the address of the program in the pointer variable
-                        // (the load() function pushes the address onto the stack)
-                        AddOpcode(new OpcodeStore());
-                        // call the program
-                        Opcode callOpcode = AddOpcode(new OpcodeCall(subprogramObject.PointerIdentifier));
-                        // set the call opcode as the destination of the previous branch
-                        branchToRun.DestinationLabel = callOpcode.Label;
-                        // return to the caller address, after adding a dummy return val:
-
-                        // maybe TODO?  Right now the RETURN command is being prevented from being used outside 
-                        // a function declaration.  But in principle we could have programs return exit codes
-                        // using the same architecture, and in fact that is why this dummy return value is needed,
-                        // because OpcodeReturn now expects such a return value to exist and throws an exception when it
-                        // does not.
-                        // If an EXIT command was implemented, it would maybe allow an exit code that can be read here:
-                        AddOpcode(new OpcodePop()); // for now: throw away return code from subprogram.
-                        AddOpcode(new OpcodePush(0)); // Replace it with new dummy return code.
-                        AddOpcode(new OpcodeReturn(0)); // return that.
-
-                        // set the function start label
-                        subprogramObject.FunctionLabel = functionStart.Label;
-
-                        // Initialization code
-                        currentCodeSection = subprogramObject.InitializationCode;
-                        // removed pointer initialization since it overwrote any existing values when loading ksm files.
-                    }
-                }
-            }
-        }
-
-        private void PushTriggerRemoveName(string newLabel)
-        {
-            triggerRemoveNames.Add(newLabel);
+            triggerKeepNames.Add(newLabel);
             nowCompilingTrigger = true;
         }
 
-        private string PeekTriggerRemoveName()
+        private string PeekTriggerKeepName()
         {
-            return nowCompilingTrigger ? triggerRemoveNames[triggerRemoveNames.Count - 1] : string.Empty;
+            return nowCompilingTrigger ? triggerKeepNames[triggerKeepNames.Count - 1] : string.Empty;
         }
 
-        private string PopTriggerRemoveName()
+        private string PopTriggerKeepName()
         {
             // Will throw exception if list is empty, but that "should
             // never happen" as pushes and pops should be balanced in
             // the compiler's code.  If it throws exception we want to
             // let the exception happen to highlight the bug
-            string returnVal = triggerRemoveNames[triggerRemoveNames.Count - 1];
-            triggerRemoveNames.RemoveAt(triggerRemoveNames.Count - 1);
-            nowCompilingTrigger = (triggerRemoveNames.Count > 0);
+            string returnVal = triggerKeepNames[triggerKeepNames.Count - 1];
+            triggerKeepNames.RemoveAt(triggerKeepNames.Count - 1);
+            nowCompilingTrigger = (triggerKeepNames.Count > 0);
             return returnVal;
         }
 
@@ -1027,7 +1003,7 @@ namespace kOS.Safe.Compilation.KS
                     break;                    
             }
         }
-
+        
         private void VisitNode(ParseNode node)
         {
             lastNode = node;
@@ -1121,6 +1097,8 @@ namespace kOS.Safe.Compilation.KS
                     VisitEditStatement(node);
                     break;
                 case TokenType.run_stmt:
+                case TokenType.runpath_stmt:
+                case TokenType.runoncepath_stmt:
                     VisitRunStatement(node);
                     break;
                 case TokenType.compile_stmt:
@@ -1150,9 +1128,10 @@ namespace kOS.Safe.Compilation.KS
                 case TokenType.factor:
                     VisitExpressionChain(node);
                     break;
-                case TokenType.expr: // expr is really the rule for doing an expression with optional trailing or-expression.
-                                     // 'or' just happens to have the lowest operator precedence level so it ends up being
-                                     // the outermost expression rule, thus getting the generic name 'expr'.
+                case TokenType.expr:
+                    VisitExpr(node);
+                    break;
+                case TokenType.or_expr:
                 case TokenType.and_expr:
                     VisitShortCircuitBoolean(node);
                     break;
@@ -1311,6 +1290,45 @@ namespace kOS.Safe.Compilation.KS
         }
 
         /// <summary>
+        /// The outermost expression level, which may be a normal expression,
+        /// or may be an anonymous function, depending of if it's got braces.
+        /// </summary>
+        /// <param name="node"></param>
+        private void VisitExpr(ParseNode node)
+        {
+            NodeStartHousekeeping(node);
+            
+            // If it's an instruction block then it's an anonymous function, so
+            // compile the function body right here, while branching around it so
+            // it won't execute just yet, and instead just push a UserDelegate of it
+            // onto the stack as the value of this expression:
+            if (node.Nodes[0].Token.Type == TokenType.instruction_block)
+            {
+                Opcode skipPastFunctionBody = AddOpcode(new OpcodeBranchJump());
+                string functionStartLabel = GetNextLabel(false);
+                
+                needImplicitReturn = true;
+                nextBraceIsFunction = true;
+                VisitNode(node.Nodes[0]); // the braces of the anonymous function and its contents get compiled in-line here.
+                nextBraceIsFunction = false;
+                if (needImplicitReturn)
+                    // needImplicitReturn is unconditionally true here, but it's being used anyway so we'll find this block
+                    // of code later when we search for "all the places using needImplicitReturn" and perform a refactor
+                    // of the logic for adding implicit returns.
+                {
+                    AddOpcode(new OpcodePush(0)); // Functions must push a dummy return val when making implicit returns. Locks already leave an expr atop the stack.
+                    AddOpcode(new OpcodeReturn(0));
+                }
+                Opcode afterFunctionBody = AddOpcode(new OpcodePushDelegateRelocateLater(null,true), functionStartLabel);
+                skipPastFunctionBody.DestinationLabel = afterFunctionBody.Label;
+            }
+            else // ordinary expression - just descend to the next level of the tree and eval the expression as normal:
+            {
+                VisitNode(node.Nodes[0]);
+            }
+        }
+
+        /// <summary>
         /// Handles the short-circuit logic of boolean OR and boolean AND
         /// chains.  It is like VisitExpressionChain (see elsewhere) but
         /// in this case it has the special logic to short circuit and skip
@@ -1453,20 +1471,20 @@ namespace kOS.Safe.Compilation.KS
             else
             {
                 //number in scientific notation
-                int exponentIndex = 2;
-                int exponentSign = 1;
-
-                double mantissa = double.Parse(node.Nodes[0].Nodes[0].Token.Text);
-
-                if (node.Nodes[2].Token.Type == TokenType.PLUSMINUS)
+                StringBuilder sb = new StringBuilder();
+                sb.Append(node.Nodes[0].Nodes[0].Token.Text); // have to use the sub-node of double or integer
+                for (int i = 1; i < node.Nodes.Count; ++i)
                 {
-                    exponentIndex++;
-                    exponentSign = (node.Nodes[2].Token.Text == "-") ? -1 : 1;
+                    sb.Append(node.Nodes[i].Token.Text);
                 }
-
-                int exponent = exponentSign * int.Parse(node.Nodes[exponentIndex].Token.Text);
-                double number = mantissa * System.Math.Pow(10, exponent);
-                AddOpcode(new OpcodePush(number));
+                string parseText = sb.ToString();
+                ScalarValue val;
+                if (ScalarValue.TryParse(parseText, out val))
+                {
+                    AddOpcode(new OpcodePush(val));
+                }
+                else
+                    throw new KOSCompileException(node.Token, string.Format(KOSNumberParseException.TERSE_MSG_FMT, parseText));
             }
         }
 
@@ -1479,27 +1497,27 @@ namespace kOS.Safe.Compilation.KS
         private void VisitInteger(ParseNode node)
         {
             NodeStartHousekeeping(node);
-            object number;
-            int integerNumber;
-
-            if (int.TryParse(node.Token.Text, out integerNumber))
+            ScalarValue val;
+            if (ScalarValue.TryParseInt(node.Token.Text.Replace("_", ""), out val) ||
+                ScalarValue.TryParseDouble(node.Token.Text.Replace("_", ""), out val) // fallback if number is too big for an integer.
+               )
             {
-                number = integerNumber;
+                AddOpcode(new OpcodePush(val));
             }
             else
-            {
-                number = double.Parse(node.Token.Text);
-            }
-
-            AddOpcode(new OpcodePush(ScalarValue.Create(number)));
+                throw new KOSCompileException(node.Token, string.Format(KOSNumberParseException.TERSE_MSG_FMT, node.Token.Text));
         }
 
         private void VisitDouble(ParseNode node)
         {
             NodeStartHousekeeping(node);
-            object number = double.Parse(node.Token.Text);
-
-            AddOpcode(new OpcodePush(ScalarValue.Create(number)));
+            ScalarValue val;
+            if (ScalarValue.TryParseDouble(node.Token.Text.Replace("_",""), out val))
+            {
+                AddOpcode(new OpcodePush(val));
+            }
+            else
+                throw new KOSCompileException(node.Token, string.Format(KOSNumberParseException.TERSE_MSG_FMT, node.Token.Text));
         }
 
         private void VisitTrueFalse(ParseNode node)
@@ -1552,12 +1570,21 @@ namespace kOS.Safe.Compilation.KS
 
             if (trailerNode.Nodes[1].Token.Type == TokenType.arglist)
             {
-                bool remember = identifierIsSuffix;
+                // Some of the flags remembering the context of
+                // what we were inside of in the parse tree aren't
+                // appropriate to be using while evaluating the function's
+                // argument terms in the list:
+                bool rememberIsSuffix = identifierIsSuffix;
                 identifierIsSuffix = false;
+                bool rememberCompilingSetDestination = compilingSetDestination;
+                compilingSetDestination = false;
 
+                // Now compile the arguments in the list:
                 VisitNode(trailerNode.Nodes[1]);
 
-                identifierIsSuffix = remember;
+                // And then return the flags to their original condition:
+                compilingSetDestination = rememberCompilingSetDestination;
+                identifierIsSuffix = rememberIsSuffix;
             }
 
             if (isDirect)
@@ -1571,6 +1598,7 @@ namespace kOS.Safe.Compilation.KS
                 var op = new OpcodeCall(string.Empty) { Direct = false };
                 AddOpcode(op);
             }
+
         }
 
         private void VisitArgList(ParseNode node)
@@ -2090,7 +2118,7 @@ namespace kOS.Safe.Compilation.KS
             Opcode branchToFalse = AddOpcode(new OpcodeBranchIfFalse());
             // The IF BODY:
             VisitNode(node.Nodes[2]);
-            if (node.Nodes.Count < 4)
+            if (node.Nodes.Count < 5)
             {
                 // No ELSE exists.
                 // Jump to after the IF BODY if false:
@@ -2105,8 +2133,9 @@ namespace kOS.Safe.Compilation.KS
                 Opcode branchPastElse = AddOpcode(new OpcodeBranchJump());
                 // This is where the ELSE clause starts:
                 branchToFalse.DestinationLabel = GetNextLabel(false);
-                // The else body:
-                VisitNode(node.Nodes[4]);
+                // The else body might be at index 4 or 5 depending on if there was an optional EOI.
+                int elseBodyIndex = node.Nodes[4].Token.Type == TokenType.ELSE ? 5 : 4;
+                VisitNode(node.Nodes[elseBodyIndex]);
                 // End of Else body label:
                 branchPastElse.DestinationLabel = GetNextLabel(false);
                 addBranchDestination = true;
@@ -2287,7 +2316,9 @@ namespace kOS.Safe.Compilation.KS
             for (int i = node.Nodes.Count - 1 ; i >= 0 ; --i)
             {
                 ParseNode child = node.Nodes[i];
-                if (child.Token.Type != TokenType.declare_function_clause) // functions nested in functions don't count
+
+                // functions nested in functions don't count, nor do anonymous delegates
+                if (child.Token.Type != TokenType.declare_function_clause && child.Token.Type != TokenType.expr)
                 {
                     if (HasParameterStmtNested(child, ref sawMandatoryParam))
                         rememberReturnVal = true;
@@ -2487,8 +2518,9 @@ namespace kOS.Safe.Compilation.KS
 
             if (triggerObject.IsInitialized())
             {
-                AddOpcode(new OpcodePush(triggerObject.VariableNameOldValue));
-                AddOpcode(new OpcodePush(triggerObject.VariableName));
+                // Store the current value into the old value to prep for the first use of the ON trigger:
+                AddOpcode(new OpcodePush(triggerObject.OldValueIdentifier));
+                VisitNode(node.Nodes[1]); // the expression in the on statement.
                 AddOpcode(new OpcodeStore());
                 AddOpcode(new OpcodePushRelocateLater(null), triggerObject.GetFunctionLabel());
                 AddOpcode(new OpcodeAddTrigger());
@@ -2512,9 +2544,6 @@ namespace kOS.Safe.Compilation.KS
         private void VisitWaitStatement(ParseNode node)
         {
             NodeStartHousekeeping(node);
-
-            if (nowCompilingTrigger)
-                throw new KOSWaitInvalidHereException(new LineCol(lastLine, lastColumn));
 
             if (node.Nodes.Count == 3)
             {
@@ -2802,15 +2831,59 @@ namespace kOS.Safe.Compilation.KS
             AddOpcode(new OpcodePop()); // all functions now return a value even if it's a dummy we ignore.
         }
 
+        /// <summary>
+        /// This one rule handles run_stmt, runpath_stmt, and runoncepath_stmt's.
+        /// They're all nearly the same thing, but with slightly different syntaces.
+        /// </summary>
+        /// <param name="node"></param>
         private void VisitRunStatement(ParseNode node)
         {
             NodeStartHousekeeping(node);
-            int volumeIndex = 3;
-            int argListIndex = 3;
-            int progNameIndex = 1;
-            bool hasOnce = false;
+            TokenType stmt_type = node.Nodes[0].Token.Type;
+            
+            // The slightly different versions of this same statememnt have the important
+            // nodes at different indeces.  Other than that, they're pretty much the same.
+            // So start by just getting the indeces of where the important parts are:
+            int volumeIndex;
+            int argListIndex;
+            int progNameIndex;
+            bool hasOnce;
+            if (stmt_type == TokenType.RUN)
+            {
+                // RUN FILEIDENT BRACKETOPEN arglist? BRACKETCLOSE (ON expr)? EOI
+                // 0th 1st       2nd         3rd      4th          5th 6th    7th 
+                hasOnce = false;  // for now.  Will change later if it's present.              
+                progNameIndex = 1;
+                argListIndex = 3;
+                volumeIndex = 3; // if argList is missing.  Will increment later if argList is present.
+            }
+            else if (stmt_type == TokenType.RUNPATH)
+            {
+                // RUNPATH BRACKETOPEN expr (COMMA arglist)? BRACKETCLOSE EOI
+                // 0th     1st         2nd   3rd   4th       5th          6th
+                hasOnce = false;
+                progNameIndex = 2;
+                argListIndex = 4;
+                volumeIndex = -99; //archaic syntax we're not supporting anymore.
+            }
+            else if (stmt_type == TokenType.RUNONCEPATH)
+            {
+                // RUNONCEPATH BRACKETOPEN expr (COMMA arglist)? BRACKETCLOSE EOI
+                // 0th         1st         2nd   3rd   4th       5th          6th
+                hasOnce = true;
+                progNameIndex = 2;
+                argListIndex = 4;
+                volumeIndex = -99; //archaic syntax we're not supporting anymore.
+            }
+            else
+            {
+                // This "cannot happen".  It's here to remove warnings about using unintialized values.
+                throw new KOSYouShouldNeverSeeThisException("kRISC.tpg file does not agree with VisitRunStatement() in Compiler.cs.");
+            }
+
             if (node.Nodes[1].Token.Type == TokenType.ONCE)
             {
+                // If a ONCE keyword is inserted after the RUN, then shift everything one step forward:
                 hasOnce = true;
                 ++volumeIndex;
                 ++argListIndex;
@@ -2838,11 +2911,9 @@ namespace kOS.Safe.Compilation.KS
             // PreprocessRunStatement() gets to it:
             if (!hasOn && options.LoadProgramsInSameAddressSpace)
             {
-                string subprogramName = node.Nodes[progNameIndex].Token.Text; // This assumption that the filenames are known at compile-time is why we can't do RUN expr 
-                if (context.Subprograms.Contains(subprogramName))
-                {
-                    AddOpcode(new OpcodePush(hasOnce)); // tell that routine whether or not to skip the run when already compiled.
-                }
+                AddOpcode(new OpcodePush(hasOnce));
+                VisitNode(node.Nodes[progNameIndex]); // put program name on stack.
+                AddOpcode(new OpcodeEval(true));
             }
 
             if (node.Nodes.Count > argListIndex && node.Nodes[argListIndex].Token.Type == TokenType.arglist)
@@ -2856,13 +2927,8 @@ namespace kOS.Safe.Compilation.KS
 
             if (!hasOn && options.LoadProgramsInSameAddressSpace)
             {
-                string subprogramName = node.Nodes[progNameIndex].Token.Text; // This assumption that the filenames are known at compile-time is why we can't do RUN expr 
-                if (context.Subprograms.Contains(subprogramName))  // and instead have to do RUN FILEIDENT, in the parser def.
-                {
-                    Subprogram subprogramObject = context.Subprograms.GetSubprogram(subprogramName);
-                    AddOpcode(new OpcodeCall(null)).DestinationLabel = subprogramObject.FunctionLabel;
-                    AddOpcode(new OpcodePop()); // ditch the dummy return value for now - maybe we can use it in a later version.
-                }
+                AddOpcode(new OpcodeCall(null)).DestinationLabel = boilerplateLoadAndRunEntryLabel;
+                AddOpcode(new OpcodePop()); // ditch the dummy return value for now - maybe we can use it in a later version.
             }
             else
             {
@@ -2875,7 +2941,7 @@ namespace kOS.Safe.Compilation.KS
                 VisitNode(node.Nodes[progNameIndex]);
 
                 // volume where program should be executed (null means local)
-                if (volumeIndex < node.Nodes.Count)
+                if (volumeIndex >= 0 && volumeIndex < node.Nodes.Count)
                     VisitNode(node.Nodes[volumeIndex]);
                 else
                     AddOpcode(new OpcodePush(null));
@@ -2894,6 +2960,7 @@ namespace kOS.Safe.Compilation.KS
             NodeStartHousekeeping(node);
             AddOpcode(new OpcodePush(new KOSArgMarkerType())); // for the load() function.
             VisitNode(node.Nodes[1]);
+            AddOpcode(new OpcodePush(false));
             if (node.Nodes.Count > 3)
             {
                 // It has a "TO outputfile" clause:
@@ -2908,7 +2975,7 @@ namespace kOS.Safe.Compilation.KS
             }
             AddOpcode(new OpcodeCall("load()"));
             AddOpcode(new OpcodePop()); // all functions now return a value even if it's a dummy we ignore.
-       }
+        }
 
         private void VisitSwitchStatement(ParseNode node)
         {
@@ -2928,7 +2995,7 @@ namespace kOS.Safe.Compilation.KS
             AddOpcode(new OpcodePush(node.Nodes[2].Token.Type == TokenType.FROM ? "from" : "to"));
 
             VisitNode(node.Nodes[3]);
-            AddOpcode(new OpcodeCall("copy()"));
+            AddOpcode(new OpcodeCall("copy_deprecated()"));
             AddOpcode(new OpcodePop()); // all functions now return a value even if it's a dummy we ignore.
         }
 
@@ -2938,21 +3005,33 @@ namespace kOS.Safe.Compilation.KS
             int oldNameIndex = 2;
             int newNameIndex = 4;
 
+            bool renameFile = false;
+
             AddOpcode(new OpcodePush(new KOSArgMarkerType()));
             if (node.Nodes.Count == 5)
             {
                 oldNameIndex--;
                 newNameIndex--;
                 AddOpcode(new OpcodePush("file"));
+                renameFile = true;
             }
             else
             {
-                AddOpcode(new OpcodePush(node.Nodes[1].Token.Type == TokenType.FILE ? "file" : "volume"));
+                renameFile = node.Nodes[1].Token.Type == TokenType.FILE;
+                AddOpcode(new OpcodePush(renameFile ? "file" : "volume"));
             }
 
             VisitNode(node.Nodes[oldNameIndex]);
             VisitNode(node.Nodes[newNameIndex]);
-            AddOpcode(new OpcodeCall("rename()"));
+
+            if (renameFile)
+            {
+                AddOpcode(new OpcodeCall("rename_file_deprecated()"));
+            }
+            else
+            {
+                AddOpcode(new OpcodeCall("rename_volume_deprecated()"));
+            }
             AddOpcode(new OpcodePop()); // all functions now return a value even if it's a dummy we ignore.
         }
 
@@ -2967,7 +3046,7 @@ namespace kOS.Safe.Compilation.KS
             else
                 AddOpcode(new OpcodePush(null));
 
-            AddOpcode(new OpcodeCall("delete()"));
+            AddOpcode(new OpcodeCall("delete_deprecated()"));
             AddOpcode(new OpcodePop()); // all functions now return a value even if it's a dummy we ignore.
         }
 
@@ -2995,8 +3074,10 @@ namespace kOS.Safe.Compilation.KS
             {
                 AddOpcode(new OpcodePush(new KOSArgMarkerType()));
                 // list type
-                if (hasIdentifier) VisitNode(node.Nodes[1]);
-                else AddOpcode(new OpcodePush("files"));
+                if (hasIdentifier)
+                    VisitNode(node.Nodes[1]);
+                else
+                    AddOpcode(new OpcodePush("files"));
                 // print list
                 AddOpcode(new OpcodeCall("printlist()"));
                 AddOpcode(new OpcodePop()); // all functions now return a value even if it's a dummy we ignore.
@@ -3073,9 +3154,9 @@ namespace kOS.Safe.Compilation.KS
             if (!nowCompilingTrigger)
                 throw new KOSPreserveInvalidHereException(new LineCol(lastLine, lastColumn));
 
-            string flagName = PeekTriggerRemoveName();
+            string flagName = PeekTriggerKeepName();
             AddOpcode(new OpcodePush(flagName));
-            AddOpcode(new OpcodePush(false));
+            AddOpcode(new OpcodePush(true));
             AddOpcode(new OpcodeStore());
         }
 

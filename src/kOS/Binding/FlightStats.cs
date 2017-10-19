@@ -1,40 +1,44 @@
-﻿using kOS.Safe.Binding;
+﻿using kOS.Module;
+using kOS.Control;
+using kOS.Safe.Binding;
 using kOS.Safe.Encapsulation.Suffixes;
 using kOS.Safe.Exceptions;
 using kOS.Suffixed;
 using kOS.Utilities;
+using UnityEngine;
+using kOS.Safe.Encapsulation;
+using System.Linq;
 
 namespace kOS.Binding
 {
     [Binding("ksp")]
     public class FlightStats : Binding
     {
+        private StageValues stageValue;
+
         public override void AddTo(SharedObjects shared)
         {
             shared.BindingMgr.AddGetter("ALT", () => new VesselAlt(shared));
-            shared.BindingMgr.AddGetter("ANGULARVELOCITY", () => shared.Vessel.transform.InverseTransformDirection(shared.Vessel.rigidbody.angularVelocity));
-            shared.BindingMgr.AddGetter("COMMRANGE", () => int.MaxValue);
+            shared.BindingMgr.AddGetter("ANGULARVELOCITY", () => shared.Vessel.transform.InverseTransformDirection(shared.Vessel.GetComponent<Rigidbody>().angularVelocity));
             shared.BindingMgr.AddGetter("ENCOUNTER", () => VesselUtils.TryGetEncounter(shared.Vessel,shared));
             shared.BindingMgr.AddGetter("ETA", () => new VesselEta(shared));
-            shared.BindingMgr.AddGetter("INCOMMRANGE", () => { throw new KOSDeprecationException("0.17.0", "INCOMMRANGE", "ADDONS:RT:HASCONNECTION(VESSEL)", @"http://ksp-kos.github.io/KOS_DOC/addons/RemoteTech.html"); });
             shared.BindingMgr.AddGetter("MISSIONTIME", () => shared.Vessel.missionTime);
             shared.BindingMgr.AddGetter(new [] { "OBT" , "ORBIT"}, () => new OrbitInfo(shared.Vessel.orbit,shared));
             shared.BindingMgr.AddGetter("TIME", () => new TimeSpan(Planetarium.GetUniversalTime()));
-            shared.BindingMgr.AddGetter("SHIP", () => new VesselTarget(shared));
-            shared.BindingMgr.AddGetter("ACTIVESHIP", () => new VesselTarget(FlightGlobals.ActiveVessel, shared));
+            shared.BindingMgr.AddGetter("ACTIVESHIP", () => VesselTarget.CreateOrGetExisting(FlightGlobals.ActiveVessel, shared));
             shared.BindingMgr.AddGetter("STATUS", () => shared.Vessel.situation.ToString());
-            shared.BindingMgr.AddGetter("STAGE", () => new StageValues(shared));
+            shared.BindingMgr.AddGetter("STAGE", () => stageValue ?? (stageValue = new StageValues(shared)));
 
             shared.BindingMgr.AddSetter("SHIPNAME", value => shared.Vessel.vesselName = value.ToString());
 
-            shared.BindingMgr.AddGetter("STEERINGMANAGER", () => SteeringManagerProvider.GetInstance(shared));
+            shared.BindingMgr.AddGetter("STEERINGMANAGER", () => (SteeringManager)kOSVesselModule.GetInstance(shared.Vessel).GetFlightControlParameter("steering"));
 
             shared.BindingMgr.AddGetter("NEXTNODE", () =>
             {
                 var vessel = shared.Vessel;
                 if (vessel.patchedConicSolver == null)
                     throw new KOSSituationallyInvalidException(
-                        "A KSP limitation makes it impossible to access the manuever nodes of this vessel at this time. " +
+                        "A KSP limitation makes it impossible to access the maneuver nodes of this vessel at this time. " +
                         "(perhaps it's not the active vessel?)");
                 if (vessel.patchedConicSolver.maneuverNodes.Count == 0)
                     throw new KOSSituationallyInvalidException("No maneuver nodes present!");
@@ -48,21 +52,16 @@ namespace kOS.Binding
                     return false; // Since there is no solver, there can be no node.
                 return vessel.patchedConicSolver.maneuverNodes.Count > 0;
             });
-
-            // These are now considered shortcuts to SHIP:suffix
-            foreach (var scName in VesselTarget.ShortCuttableShipSuffixes)
-            {
-                var cName = scName;
-                shared.BindingMgr.AddGetter(scName, () => VesselShortcutGetter(shared, cName));
-            }
+            shared.BindingMgr.AddGetter("ALLNODES", () => GetAllNodes(shared));
         }
-        
-        public object VesselShortcutGetter(SharedObjects shared, string name)
+
+        public ListValue<Node> GetAllNodes(SharedObjects shared)
         {
-            ISuffixResult suffix = new VesselTarget(shared).GetSuffix(name);
-            if (! suffix.HasValue)
-                suffix.Invoke(shared.Cpu);
-            return suffix.Value;
+            var vessel = shared.Vessel;
+            if (vessel.patchedConicSolver == null || vessel.patchedConicSolver.maneuverNodes.Count == 0)
+                return new ListValue<Node>();
+            var ret = new ListValue<Node>(vessel.patchedConicSolver.maneuverNodes.Select(e => Node.FromExisting(vessel, e, shared)));
+            return ret;
         }
     }
 }

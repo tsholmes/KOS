@@ -9,6 +9,8 @@ using kOS.Safe.Utilities;
 using kOS.Suffixed;
 using kOS.Suffixed.PartModuleField;
 using System;
+using KSP.UI.Screens;
+using kOS.Safe;
 
 namespace kOS.Function
 {
@@ -63,7 +65,7 @@ namespace kOS.Function
             }
         }
     }
-
+    
     [Function("printat")]
     public class FunctionPrintAt : FunctionBase
     {
@@ -106,11 +108,12 @@ namespace kOS.Function
         public override void Execute(SharedObjects shared)
         {
             AssertArgBottomAndConsume(shared);
-            if (Staging.separate_ready && shared.Vessel.isActiveVessel)
+            if (StageManager.CanSeparate && shared.Vessel.isActiveVessel)
             {
-                Staging.ActivateNextStage();
+                StageManager.ActivateNextStage();
+                shared.Cpu.YieldProgram(new YieldFinishedNextTick());
             }
-            else if (!Staging.separate_ready)
+            else if (!StageManager.CanSeparate)
             {
                 SafeHouse.Logger.Log("FAIL SILENT: Stage is called before it is ready, Use STAGE:READY to check first if staging rapidly");
             }
@@ -161,7 +164,7 @@ namespace kOS.Function
                     throw new KOSArgumentMismatchException(new[] { 1 }, args);
             }
             AssertArgBottomAndConsume(shared);
-            TimeWarp.fetch.WarpTo(ut);
+            TimeWarpValue.Instance.WarpTo(ut);
         }
     }
 

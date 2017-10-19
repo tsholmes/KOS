@@ -35,14 +35,21 @@ namespace kOS.Safe.Execution
         int InstructionPointer { get; set; }
         double SessionTime { get; }
         List<string> ProfileResult { get; }
-        void AddTrigger(int triggerFunctionPointer);
+        TriggerInfo AddTrigger(int triggerFunctionPointer, List<VariableScope> closure);
+        TriggerInfo AddTrigger(TriggerInfo trigger);
+        TriggerInfo AddTrigger(UserDelegate del, List<Structure> args);
+        TriggerInfo AddTrigger(UserDelegate del, params Structure[] args);
         void RemoveTrigger(int triggerFunctionPointer);
-        void StartWait(double waitTime);
-        void EndWait();
+        void RemoveTrigger(TriggerInfo trigger);
         void CallBuiltinFunction(string functionName);
         bool BuiltInExists(string functionName);
         void BreakExecution(bool manual);
+        void YieldProgram(YieldFinishedDetector yieldTracker);
         void AddVariable(Variable variable, string identifier, bool local, bool overwrite = false);
+        IProgramContext GetCurrentContext();
+        void AddPopContextNotifyee(IPopContextNotifyee notifyee);
+        void RemovePopContextNotifyee(IPopContextNotifyee notifyee);
+        Opcode GetCurrentOpcode();
         Opcode GetOpcodeAt(int instructionPtr);
         void Boot();
         int InstructionsThisUpdate { get; }
@@ -50,7 +57,6 @@ namespace kOS.Safe.Execution
         void StopCompileStopwatch();
         IProgramContext GetInterpreterContext();
         IProgramContext SwitchToProgramContext();
-        Opcode GetCurrentOpcode();
 
         /// <summary>
         /// Return the subroutine call trace of how the code got to where it is right now.
@@ -62,5 +68,7 @@ namespace kOS.Safe.Execution
 
         List<string> GetCodeFragment(int contextLines);
         void RunProgram(List<Opcode> program);
+
+        bool IsPoppingContext { get; }
     }
 }

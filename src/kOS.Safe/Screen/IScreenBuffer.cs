@@ -6,7 +6,7 @@ namespace kOS.Safe.Screen
     {
         int CharacterPixelWidth { get; set; }
         int CharacterPixelHeight { get; set; }
-        float Brightness { get; set; }
+        double Brightness { get; set; } // double is overkill, but floats don't work in KSP config.xml files.
         int CursorRowShow { get; }
         int CursorColumnShow { get; }
         int RowCount { get; }
@@ -15,6 +15,7 @@ namespace kOS.Safe.Screen
         int BeepsPending {get; set;}
         bool ReverseScreen {get; set;}
         bool VisualBeep {get; set;}
+        Queue<char> CharInputQueue { get; }
         int TopRow {get;}
         void SetSize(int rowCount, int columnCount);
         int ScrollVertical(int deltaRows);
@@ -29,6 +30,7 @@ namespace kOS.Safe.Screen
         List<IScreenBufferLine> GetBuffer();
         void AddResizeNotifier(ScreenBuffer.ResizeNotifier notifier);
         void RemoveResizeNotifier(ScreenBuffer.ResizeNotifier notifier);
+        void RemoveAllResizeNotifiers();
         string DebugDump();
     }
 }

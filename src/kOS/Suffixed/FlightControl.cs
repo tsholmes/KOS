@@ -6,11 +6,13 @@ using kOS.Safe.Encapsulation.Suffixes;
 using kOS.Safe.Utilities;
 using kOS.Utilities;
 using Math = System.Math;
+using kOS.Communication;
+using kOS.Control;
 
 namespace kOS.Suffixed
 {
-    [kOS.Safe.Utilities.KOSNomenclature("Control")]
-    public class FlightControl : Structure , IDisposable
+    [KOSNomenclature("Control")]
+    public class FlightControl : Structure , IDisposable, IFlightControlParameter
     {
         private const float SETTING_EPILSON = 0.00001f;
         // For rotation x = yaw, y = pitch, and z = roll
@@ -55,8 +57,6 @@ namespace kOS.Suffixed
         {
             float floatValue = 0;
             Vector vectorValue = null;
-            
-            Bind();
 
             if (CheckNeutral(suffixName, value))
             {
@@ -86,31 +86,8 @@ namespace kOS.Suffixed
             return base.SetSuffix(suffixName, value);
         }
 
-        public void Unbind()
-        {
-            SafeHouse.Logger.Log("FlightControl Unbinding");
-            if (!bound) return;
-
-            if (RemoteTechHook.IsAvailable())
-            {
-                RemoteTechHook.Instance.RemoveSanctionedPilot(Vessel.id, OnFlyByWire);
-            }
-            else
-            {
-                Vessel.OnPreAutopilotUpdate -= OnFlyByWire;
-            }
-            bound = false;
-            SafeHouse.Logger.Log("FlightControl Unbound");
-        }
-
-        public void UpdateVessel(Vessel toUpdate)
-        {
-            Vessel = toUpdate;
-        }
-
         public void Dispose()
         {
-            Unbind();
         }
 
         public override string ToString()
@@ -226,9 +203,9 @@ namespace kOS.Suffixed
             }
             else
             {
-                starboard = (float)Safe.Utilities.Math.Clamp(vectorValue.X, -1, 1);
-                top = (float)Safe.Utilities.Math.Clamp(vectorValue.Y, -1, 1);
-                fore = (float)Safe.Utilities.Math.Clamp(vectorValue.Z, -1, 1);
+                starboard = (float)KOSMath.Clamp(vectorValue.X, -1, 1);
+                top = (float)KOSMath.Clamp(vectorValue.Y, -1, 1);
+                fore = (float)KOSMath.Clamp(vectorValue.Z, -1, 1);
             }
         }
 
@@ -242,9 +219,9 @@ namespace kOS.Suffixed
             }
             else
             {
-                yaw = (float)Safe.Utilities.Math.Clamp(vectorValue.X, -1, 1);
-                pitch = (float)Safe.Utilities.Math.Clamp(vectorValue.Y, -1, 1);
-                roll = (float)Safe.Utilities.Math.Clamp(vectorValue.Z, -1, 1);
+                yaw = (float)KOSMath.Clamp(vectorValue.X, -1, 1);
+                pitch = (float)KOSMath.Clamp(vectorValue.Y, -1, 1);
+                roll = (float)KOSMath.Clamp(vectorValue.Z, -1, 1);
             }
         }
 
@@ -280,26 +257,9 @@ namespace kOS.Suffixed
             return true;
         }
 
-        private void Bind()
-        {
-            if (bound) return;
-            SafeHouse.Logger.Log("FlightControl Binding");
-
-            if (RemoteTechHook.IsAvailable(Vessel.id))
-            {
-                RemoteTechHook.Instance.AddSanctionedPilot(Vessel.id, OnFlyByWire);
-            }
-            else
-            {
-                Vessel.OnPreAutopilotUpdate += OnFlyByWire;
-            }
-            bound = true;
-            SafeHouse.Logger.Log("FlightControl Bound");
-        }
-
         private bool CheckKillRotation(string suffixName, object value)
         {
-            if (suffixName == "KILLROTATION")
+            if (suffixName.Equals("KILLROTATION", StringComparison.OrdinalIgnoreCase))
             {
                 killRotation.Value = bool.Parse(value.ToString());
                 return true;
@@ -309,7 +269,7 @@ namespace kOS.Suffixed
         }
         private bool CheckResetTrim(string suffixName, object value)
         {
-            if (suffixName == "RESETTRIM")
+            if (suffixName.Equals("RESETTRIM", StringComparison.OrdinalIgnoreCase))
             {
                 resetTrim.Value = bool.Parse(value.ToString());
                 return true;
@@ -320,11 +280,10 @@ namespace kOS.Suffixed
 
         private bool CheckNeutral(string suffix, object value)
         {
-            if (suffix == "NEUTRALIZE")
+            if (suffix.Equals("NEUTRALIZE", StringComparison.OrdinalIgnoreCase))
             {
                 ResetControls();
                 neutral.Value = bool.Parse(value.ToString());
-                Unbind();
                 return true;
             }
             neutral.Value = false;
@@ -345,7 +304,6 @@ namespace kOS.Suffixed
 
         private void OnFlyByWire(FlightCtrlState st)
         {
-            if (!bound) return;
             if (neutral.IsStale)
             {
                 if (neutral.FlushValue)
@@ -386,6 +344,75 @@ namespace kOS.Suffixed
             if(Math.Abs(wheelSteerTrim) > SETTING_EPILSON) st.wheelSteerTrim = wheelSteerTrim;
             if(Math.Abs(wheelThrottleTrim) > SETTING_EPILSON) st.wheelThrottleTrim = wheelThrottleTrim;
 
+        }
+
+        bool IFlightControlParameter.Enabled
+        {
+            get
+            {
+                return !neutral.Value;
+            }
+        }
+
+        bool IFlightControlParameter.IsAutopilot
+        {
+            get
+            {
+                return true;
+            }
+        }
+
+        uint IFlightControlParameter.ControlPartId
+        {
+            get
+            {
+                return 0;
+            }
+        }
+
+        void IFlightControlParameter.UpdateValue(object value, SharedObjects shared)
+        {
+            throw new NotImplementedException();
+            // FlightControl value does not get set like other values
+        }
+
+        object IFlightControlParameter.GetValue()
+        {
+            throw new NotImplementedException();
+            // FlightControl value does not get like other values
+        }
+
+        SharedObjects IFlightControlParameter.GetShared()
+        {
+            return null;
+        }
+
+        void IFlightControlParameter.UpdateAutopilot(FlightCtrlState c)
+        {
+            OnFlyByWire(c);
+        }
+
+        void IFlightControlParameter.EnableControl(SharedObjects shared)
+        {
+            // No need to enable control, it will automatically enable based on setting values
+        }
+
+        void IFlightControlParameter.DisableControl(SharedObjects shared)
+        {
+            // We'll just neutralize here
+            neutral.Value = true;
+        }
+
+        void IFlightControlParameter.DisableControl()
+        {
+            // We'll just neutralize here
+            neutral.Value = true;
+        }
+
+        void IFlightControlParameter.CopyFrom(IFlightControlParameter origin)
+        {
+            return;
+            throw new NotImplementedException(); // TODO: implement copy
         }
     }
 }

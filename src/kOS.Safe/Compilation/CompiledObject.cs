@@ -5,6 +5,9 @@ using System.IO;
 using System.Linq;
 using kOS.Safe.Encapsulation;
 using kOS.Safe.Execution;
+using kOS.Safe.Persistence;
+using ICSharpCode.SharpZipLib.GZip;
+using ICSharpCode.SharpZipLib.Zip.Compression;
 
 namespace kOS.Safe.Compilation
 {
@@ -239,7 +242,15 @@ namespace kOS.Safe.Compilation
             everything.AddRange(headBuff);
             everything.AddRange(allCodeBuff);
             everything.AddRange(lineMap.Pack());
-            return everything.ToArray();
+            using (var compressedStream = new MemoryStream())
+            {
+                using (var csStream = new GZipOutputStream(compressedStream))
+                {
+                    csStream.Write(everything.ToArray(), 0, everything.Count);
+                    csStream.Flush();
+                }
+                return compressedStream.ToArray();
+            }
         }
         
         /// <summary>
@@ -296,7 +307,7 @@ namespace kOS.Safe.Compilation
                 else if ( (! string.IsNullOrEmpty(op.Label)) &&
                           (op.Label != expectedLabel) )
                 {
-                    op = new OpcodeLabelReset(op.Label);
+                    op = new OpcodeLabelReset(op.Label) { SourcePath = op.SourcePath, SourceLine = op.SourceLine } ;
                     --index;
                     justInsertedLabel = true;
                 }
@@ -469,16 +480,34 @@ namespace kOS.Safe.Compilation
         /// <summary>
         /// Given a packed representation of the program, load it back into program form:
         /// </summary>
-        /// <param name="filePath">name of file (with preceeding "volume/") that the program came from, for runtime error reporting.</param>
-        /// <param name="prefix">prepend this string to all labels in this program.</param>
+        /// <param name="path">path of file (with preceeding "volume:") that the program came from, for runtime error reporting.</param>
+        /// <param name="prefix">prepend this string to all labels in this program, with the exception
+        /// of when this program is calling the @LR LoadRunner labels.</param>
         /// <param name="content">the file itself in ony big binary array.</param>
         /// <returns></returns>
-        public static List<CodePart> UnPack(string filePath, string prefix, byte[] content)
+        public static List<CodePart> UnPack(GlobalPath path, string prefix, byte[] content)
         {
             var program = new List<CodePart>();
             var reader = new BinaryReader(new MemoryStream(content));
             
             byte[] firstFour = reader.ReadBytes(4);
+            if (firstFour.SequenceEqual(PersistenceUtilities.GzipHeader))
+            {
+                reader.Close();
+
+                var zipStream = new GZipInputStream(new MemoryStream(content));
+                var decompressedStream = new MemoryStream();
+                var buffer = new byte[4096];
+                int read;
+                while ((read = zipStream.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    decompressedStream.Write(buffer, 0, read);
+                }
+                decompressedStream.Seek(0, SeekOrigin.Begin);
+                reader = new BinaryReader(decompressedStream);
+
+                firstFour = reader.ReadBytes(4);
+            }
             
             if (! firstFour.SequenceEqual(MagicId))
                 throw new Exception("Attempted to read an ML file that doesn't seem to be an ML file");
@@ -507,12 +536,12 @@ namespace kOS.Safe.Compilation
                 {
                     case (byte)'F':
                         // new CodePart's always start with the function header:
-                        var nextPart = new CodePart(filePath);
+                        var nextPart = new CodePart();
                         program.Add(nextPart);
                         // If this is the very first code we've ever encountered in the file, remember its position:
                         if (codeStart == 0)
                             codeStart = (int)(reader.BaseStream.Position - 2); // start is where the ByteCode.DELIMITER of the first section is.
-                        
+
                         program[program.Count-1].FunctionsCode = ReadOpcodeList(reader, codeStart, prefix, arguments, argIndexSize);
                         break;
                     case (byte)'I':
@@ -528,8 +557,8 @@ namespace kOS.Safe.Compilation
             }
             reader.Close();
 
-            PostReadProcessing(program, filePath, prefix, lineMap);
-                                                  
+            PostReadProcessing(program, path, lineMap);
+
             return program;
         }
         
@@ -578,10 +607,9 @@ namespace kOS.Safe.Compilation
         /// proper values.
         /// </summary>
         /// <param name="program">recently built program parts to re-assign.</param>
-        /// <param name="filePath">name of file (with preceeding volume/) that the compiled code came from, for rutime error reporting purposes.</param>
-        /// <param name="prefix">a string to prepend to the labels in the program.</param>
+        /// <param name="path">path of file (with preceeding volume:) that the compiled code came from, for rutime error reporting purposes.</param>
         /// <param name="lineMap">describes the mapping of line numbers to code locations.</param>
-        private static void PostReadProcessing(IEnumerable<CodePart> program, string filePath, string prefix, DebugLineMap lineMap)
+        private static void PostReadProcessing(IEnumerable<CodePart> program, GlobalPath path, DebugLineMap lineMap)
         {
             //TODO:prefix is never used.
             SortedList<IntRange,int> lineLookup = lineMap.BuildInverseLookup();
@@ -627,8 +655,8 @@ namespace kOS.Safe.Compilation
                         else
                             // Not every opcode came from a source line - so if it's skipped over, assign it to bogus value.
                             op.SourceLine = -1;
-                        
-                        op.SourceName = string.IsNullOrEmpty(op.SourceName) ? filePath : String.Empty;
+
+                        op.SourcePath = (op.SourcePath == null || op.SourcePath == GlobalPath.EMPTY) ? path : GlobalPath.EMPTY;
 
                     }
                 }
@@ -664,7 +692,8 @@ namespace kOS.Safe.Compilation
         /// <param name="reader">binary reader to read from.</param>
         /// <param name="codeStartPos">index into the stream where the first code block in the ML file started,
         /// for calculating indeces.</param>
-        /// <param name="prefix">prefix to prepend to all labels within this program.</param>
+        /// <param name="prefix">prefix to prepend to all labels within this program, with the
+        /// exception of cases where this program is calling the @LR load runner labels.</param>
         /// <param name="arguments">argument dictionary to pull arguments from.</param>
         /// <param name="argIndexSize">number of bytes the argument indeces are packed into.</param>
         /// <returns>list of opcodes generated</returns>
@@ -704,7 +733,11 @@ namespace kOS.Safe.Compilation
                     if (argInfo.NeedReindex)
                     {                                              
                         val = arguments[argIndex];
-                        if ( val is string && ((string)val).StartsWith("@") && (((string)val).Length > 1) )
+                        if (val is string &&
+                            ((string)val).StartsWith("@") &&
+                            (((string)val).Length > 1) &&
+                            !((string)val).StartsWith("@LR") // Do not re-assign calls to the LoadRunner global label that resides outside this KSM file.
+                           )
                         {
                             val = "@" + prefix + "_" + ((string)val).Substring(1);
                         }
