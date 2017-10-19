@@ -1,9 +1,10 @@
 ﻿using kOS.Safe.Persistence;
+using System;
 
 namespace kOS.Safe.Function.Persistence
 {
-    [Function("create")]
-    public class FunctionCreate : SafeFunctionBase
+    [Function("deletepath")]
+    public class FunctionDeletePath : SafeFunctionBase
     {
         public override void Execute(SafeSharedObjects shared)
         {
@@ -13,9 +14,7 @@ namespace kOS.Safe.Function.Persistence
             GlobalPath path = shared.VolumeMgr.GlobalPathFromObject(pathObject);
             Volume volume = shared.VolumeMgr.GetVolumeFromPath(path);
 
-            VolumeFile volumeFile = volume.CreateFile(path);
-
-            ReturnValue = volumeFile;
+            ReturnValue = volume.Delete(path);
         }
     }
 }

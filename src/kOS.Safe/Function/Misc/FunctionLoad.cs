@@ -1,5 +1,5 @@
 ﻿using kOS.Safe.Compilation;
-using kOS.Safe.Encapsulation;
+using kOS.Safe.Execution;
 using kOS.Safe.Persistence;
 using System.Collections.Generic;
 
@@ -8,11 +8,20 @@ namespace kOS.Safe.Function.Misc
     [FunctionAttribute("load")]
     public class FunctionLoad : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
+            // NOTE: The built-in load() function actually ends up returning
+            // two things on the stack: on top is a boolean for whether the program
+            // was already loaded, and under that is an integer for where to jump to
+            // to call it.  The load() function is NOT meant to be called directly from
+            // a user script.
+            // (unless it's being called in compile-only mode, in which case it
+            // returns the default dummy zero on the stack like everything else does).
+
+            UsesAutoReturn = true;
             bool defaultOutput = false;
             bool justCompiling = false; // is this load() happening to compile, or to run?
-            string fileNameOut = null;
+            GlobalPath outPath = null;
             object topStack = PopValueAssert(shared, true); // null if there's no output file (output file means compile, not run).
             if (topStack != null)
             {
@@ -21,30 +30,53 @@ namespace kOS.Safe.Function.Misc
                 if (outputArg.Equals("-default-compile-out-"))
                     defaultOutput = true;
                 else
-                    fileNameOut = PersistenceUtilities.CookedFilename(outputArg, Volume.KOS_MACHINELANGUAGE_EXTENSION);
+                    outPath = shared.VolumeMgr.GlobalPathFromObject(outputArg);
             }
 
-            string fileName = null;
-            topStack = PopValueAssert(shared, true);
-            if (topStack != null)
-                fileName = topStack.ToString();
+            object skipAlreadyObject = PopValueAssert(shared, false);
+            bool skipIfAlreadyCompiled = (skipAlreadyObject is bool) ? (bool)skipAlreadyObject : false;
+
+            object pathObject = PopValueAssert(shared, true);
 
             AssertArgBottomAndConsume(shared);
 
-            if (fileName == null)
+            if (pathObject == null)
                 throw new KOSFileException("No filename to load was given.");
 
-            VolumeFile file = shared.VolumeMgr.CurrentVolume.Open(fileName, !justCompiling); // if running, look for KSM first.  If compiling look for KS first.
-            if (file == null) throw new KOSFileException(string.Format("Can't find file '{0}'.", fileName));
-            fileName = file.Name; // just in case GetByName picked an extension that changed it.
+            GlobalPath path = shared.VolumeMgr.GlobalPathFromObject(pathObject);
+            Volume volume = shared.VolumeMgr.GetVolumeFromPath(path);
+
+            VolumeFile file = volume.Open(path, !justCompiling) as VolumeFile; // if running, look for KSM first.  If compiling look for KS first.
+            if (file == null) throw new KOSFileException(string.Format("Can't find file '{0}'.", path));
+            path = GlobalPath.FromVolumePath(file.Path, shared.VolumeMgr.GetVolumeId(volume));
+
+            if (skipIfAlreadyCompiled && !justCompiling)
+            {
+                var programContext = shared.Cpu.SwitchToProgramContext();
+                int programAddress = programContext.GetAlreadyCompiledEntryPoint(path.ToString());
+                if (programAddress >= 0)
+                {
+                    // TODO - The check could also have some dependancy on whether the file content changed on
+                    //     disk since last time, but that would also mean having to have a way to clear out the old
+                    //     copy of the compiled file from the program context, which right now doesn't exist. (Without
+                    //     that, doing something like a loop that re-wrote a file and re-ran it 100 times would leave
+                    //     100 old dead copies of the compiled opcodes in memory, only the lastmost copy being really used.)
+
+                    // We're done here.  Skip the compile.  Point the caller at the already-compiled version.
+                    shared.Cpu.PushStack(programAddress);
+                    this.ReturnValue = true; // tell caller that it already existed.
+                    return;
+                }
+            }
+
             FileContent fileContent = file.ReadAll();
 
             // filename is now guaranteed to have an extension.  To make default output name, replace the extension with KSM:
             if (defaultOutput)
-                fileNameOut = fileName.Substring(0, fileName.LastIndexOf('.')) + "." + Volume.KOS_MACHINELANGUAGE_EXTENSION;
+                outPath = path.ChangeExtension(Volume.KOS_MACHINELANGUAGE_EXTENSION);
 
-            if (fileNameOut != null && fileName == fileNameOut)
-                throw new KOSFileException("Input and output filenames must differ.");
+            if (path.Equals(outPath))
+                throw new KOSFileException("Input and output paths must differ.");
 
             if (shared.VolumeMgr == null) return;
             if (shared.VolumeMgr.CurrentVolume == null) throw new KOSFileException("Volume not found");
@@ -53,17 +85,13 @@ namespace kOS.Safe.Function.Misc
             {
                 shared.Cpu.StartCompileStopwatch();
                 var options = new CompilerOptions { LoadProgramsInSameAddressSpace = true, FuncManager = shared.FunctionManager };
-                string filePath = shared.VolumeMgr.GetVolumeRawIdentifier(shared.VolumeMgr.CurrentVolume) + "/" + fileName;
                 // add this program to the address space of the parent program,
                 // or to a file to save:
                 if (justCompiling)
                 {
-                    List<CodePart> compileParts = shared.ScriptHandler.Compile(filePath, 1, fileContent.String, string.Empty, options);
-                    VolumeFile volumeFile = shared.VolumeMgr.CurrentVolume.Save(fileNameOut, new FileContent(compileParts));
-                    if (volumeFile == null)
-                    {
-                        throw new KOSFileException("Can't save compiled file: not enough space or access forbidden");
-                    }
+                    // since we've already read the file content, use the volume from outPath instead of the source path
+                    volume = shared.VolumeMgr.GetVolumeFromPath(outPath);
+                    shared.Cpu.YieldProgram(YieldFinishedCompile.CompileScriptToFile(path, 1, fileContent.String, options, volume, outPath));
                 }
                 else
                 {
@@ -72,15 +100,17 @@ namespace kOS.Safe.Function.Misc
                     if (fileContent.Category == FileCategory.KSM)
                     {
                         string prefix = programContext.Program.Count.ToString();
-                        parts = fileContent.AsParts(filePath, prefix);
+                        parts = fileContent.AsParts(path, prefix);
+                        int programAddress = programContext.AddObjectParts(parts, path.ToString());
+                        // push the entry point address of the new program onto the stack
+                        shared.Cpu.PushStack(programAddress);
                     }
                     else
                     {
-                        parts = shared.ScriptHandler.Compile(filePath, 1, fileContent.String, "program", options);
+                        UsesAutoReturn = false;
+                        shared.Cpu.YieldProgram(YieldFinishedCompile.LoadScript(path, 1, fileContent.String, "program", options));
                     }
-                    int programAddress = programContext.AddObjectParts(parts);
-                    // push the entry point address of the new program onto the stack
-                    shared.Cpu.PushStack(programAddress);
+                    this.ReturnValue = false; // did not already exist.
                 }
                 shared.Cpu.StopCompileStopwatch();
             }

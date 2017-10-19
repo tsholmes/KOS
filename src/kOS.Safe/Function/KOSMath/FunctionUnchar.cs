@@ -5,7 +5,7 @@ namespace kOS.Safe.Function.KOSMath
     [Function("unchar")]
     public class FunctionUnchar : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             string argument = PopValueAssert(shared).ToString();
             AssertArgBottomAndConsume(shared);

@@ -8,7 +8,7 @@ namespace kOS.Safe.Function.KOSMath
     {
         private readonly Random random = new Random();
 
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             AssertArgBottomAndConsume(shared);
             ReturnValue = ScalarValue.Create(random.NextDouble());

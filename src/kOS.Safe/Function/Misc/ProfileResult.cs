@@ -5,7 +5,7 @@ namespace kOS.Safe.Function.Misc
     [Function("profileresult")]
     public class ProfileResult : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             AssertArgBottomAndConsume(shared);
             if (shared.Cpu.ProfileResult == null || shared.Cpu.ProfileResult.Count == 0)

@@ -6,7 +6,7 @@ namespace kOS.Safe.Function.Persistence
     [Function("rename")]
     public class FunctionRename : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             string newName = PopValueAssert(shared, true).ToString();
             // old file name or, when we're renaming a volume, the old volume name or Volume instance

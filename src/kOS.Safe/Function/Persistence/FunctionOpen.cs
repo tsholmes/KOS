@@ -1,4 +1,4 @@
-﻿using kOS.Safe.Encapsulation;
+﻿using kOS.Safe.Persistence;
 using kOS.Safe.Exceptions;
 
 namespace kOS.Safe.Function.Persistence
@@ -6,19 +6,22 @@ namespace kOS.Safe.Function.Persistence
     [Function("open")]
     public class FunctionOpen : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
-            string fileName = PopValueAssert(shared, true).ToString();
+            object pathObject = PopValueAssert(shared, true);
             AssertArgBottomAndConsume(shared);
 
-            VolumeFile volumeFile = shared.VolumeMgr.CurrentVolume.Open(fileName);
+            GlobalPath path = shared.VolumeMgr.GlobalPathFromObject(pathObject);
+            Volume volume = shared.VolumeMgr.GetVolumeFromPath(path);
 
-            if (volumeFile == null)
+            VolumeItem volumeItem = volume.Open(path);
+
+            if (volumeItem == null)
             {
-                throw new KOSException("File does not exist: " + fileName);
+                throw new KOSException("File or directory does not exist: " + path);
             }
 
-            ReturnValue = volumeFile;
+            ReturnValue = volumeItem;
         }
     }
 }

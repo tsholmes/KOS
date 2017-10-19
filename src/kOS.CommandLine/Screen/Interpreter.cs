@@ -33,7 +33,17 @@ namespace kOS.CommandLine.Screen
             throw new NotImplementedException();
         }
 
+        public bool IsWaitingForCommand()
+        {
+            throw new NotImplementedException();
+        }
+
         public void Reset()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void RemoveAllResizeNotifiers()
         {
             throw new NotImplementedException();
         }
@@ -62,7 +72,7 @@ namespace kOS.CommandLine.Screen
             }
         }
 
-        public float Brightness
+        public double Brightness
         {
             get
             {
@@ -137,6 +147,14 @@ namespace kOS.CommandLine.Screen
                 throw new NotImplementedException();
             }
             set
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+
+        public Queue<char> CharInputQueue {
+            get
             {
                 throw new NotImplementedException();
             }

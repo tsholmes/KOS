@@ -6,7 +6,7 @@ namespace kOS.Safe.Function.Collections
     [Function("lex", "lexicon")]
     public class FunctionLexicon : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             Structure[] argArray = new Structure[CountRemainingArgs(shared)];
             for (int i = argArray.Length - 1; i >= 0; --i)

@@ -18,8 +18,8 @@ namespace kOS.CommandLine.Execution
 {
     public class kOSWorker : IProcessor
     {
-        private SharedObjects shared;
-        public SharedObjects Shared { get { return shared; } }
+        private SafeSharedObjects shared;
+        public SafeSharedObjects Shared { get { return shared; } }
 
         ProcessorModes mode = ProcessorModes.READY;
 
@@ -37,11 +37,12 @@ namespace kOS.CommandLine.Execution
             CompiledObject.InitTypeData();
             AssemblyWalkAttribute.Walk();
 
-            shared = new SharedObjects();
+            shared = new SafeSharedObjects();
             shared.Processor = this;
             shared.UpdateHandler = new UpdateHandler();
             shared.BindingMgr = new BindingManager(shared);
             //shared.Interpreter = new Screen.Interpreter();
+            shared.GameEventDispatchManager = new GameEventDispatchManager();
             shared.Screen = shared.Interpreter;
             shared.ScriptHandler = new KSScript();
             shared.Logger = SafeHouse.Logger;
@@ -51,7 +52,7 @@ namespace kOS.CommandLine.Execution
             //shared.SoundMaker = Sound.SoundMaker.Instance;
 
             // add archive.
-            var archive = new Archive();
+            var archive = new Archive(Path.GetTempPath());
             shared.VolumeMgr.Add(archive);
             shared.VolumeMgr.SwitchTo(archive);
 
@@ -62,7 +63,7 @@ namespace kOS.CommandLine.Execution
         {
             if (shared != null && shared.ScriptHandler != null)
             {
-                string filepath = "<sys:push>";
+                GlobalPath filepath = GlobalPath.FromString("0:/<sys:push>");
                 var options = new CompilerOptions
                 {
                     LoadProgramsInSameAddressSpace = false,
@@ -72,7 +73,7 @@ namespace kOS.CommandLine.Execution
                 //var program = shared.Cpu.SwitchToProgramContext();
                 var program = shared.Cpu.GetInterpreterContext();
                 var parts = shared.ScriptHandler.Compile(filepath, 0, content, "interpreter", options);
-                var instruction = program.AddObjectParts(parts);
+                var instruction = program.AddObjectParts(parts, "<sys:push>");
                 shared.Cpu.InstructionPointer++;
             }
         }
@@ -92,16 +93,32 @@ namespace kOS.CommandLine.Execution
             return mode;
         }
 
-        public string BootFilename
+        public VolumePath BootFilePath
         {
             get
             {
                 // TODO: implement using a boot file.
-                return "None";
+                return VolumePath.FromString("0:/boot");
             }
             set
             {
                 throw new NotImplementedException();
+            }
+        }
+
+        public String Tag
+        {
+            get
+            {
+                return "";
+            }
+        }
+
+        public int KOSCoreId
+        {
+            get
+            {
+                return 0;
             }
         }
 

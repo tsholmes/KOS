@@ -1,5 +1,5 @@
 ﻿using kOS.Safe.Compilation;
-using kOS.Safe.Encapsulation;
+using kOS.Safe.Exceptions;
 using kOS.Safe.Execution;
 using kOS.Safe.Persistence;
 using System;
@@ -10,12 +10,12 @@ namespace kOS.Safe.Function.Misc
     [Function("run")]
     public class FunctionRun : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             // run() is strange.  It needs two levels of args - the args to itself, and the args it is meant to
             // pass on to the program it's invoking.  First, these are the args to run itself:
             object volumeId = PopValueAssert(shared, true);
-            string fileName = PopValueAssert(shared, true).ToString();
+            object pathObject = PopValueAssert(shared, true);
             AssertArgBottomAndConsume(shared);
 
             // Now the args it is going to be passing on to the program:
@@ -26,50 +26,42 @@ namespace kOS.Safe.Function.Misc
             AssertArgBottomAndConsume(shared);
 
             if (shared.VolumeMgr == null) return;
-            if (shared.VolumeMgr.CurrentVolume == null) throw new Exception("Volume not found");
 
-            VolumeFile file = shared.VolumeMgr.CurrentVolume.Open(fileName, true);
-            if (file == null) throw new Exception(string.Format("File '{0}' not found", fileName));
+            GlobalPath path = shared.VolumeMgr.GlobalPathFromObject(pathObject);
+            Volume volume = shared.VolumeMgr.GetVolumeFromPath(path);
+            VolumeFile volumeFile = volume.Open(path) as VolumeFile;
+
+            FileContent content = volumeFile != null ? volumeFile.ReadAll() : null;
+
+            if (content == null) throw new Exception(string.Format("File '{0}' not found", path));
+
             if (shared.ScriptHandler == null) return;
 
             if (volumeId != null)
             {
-                throw new kOS.Safe.Exceptions.KOSException("Running programs on another processor is not supported");
+                throw new KOSObsoletionException("v1.0.2", "run [file] on [volume]", "None", "");
             }
             else
             {
                 // clear the "program" compilation context
                 shared.Cpu.StartCompileStopwatch();
                 shared.ScriptHandler.ClearContext("program");
-                string filePath = shared.VolumeMgr.GetVolumeRawIdentifier(shared.VolumeMgr.CurrentVolume) + "/" + fileName;
+                //string filePath = shared.VolumeMgr.GetVolumeRawIdentifier(shared.VolumeMgr.CurrentVolume) + "/" + fileName;
                 var options = new CompilerOptions { LoadProgramsInSameAddressSpace = true, FuncManager = shared.FunctionManager };
                 var programContext = shared.Cpu.SwitchToProgramContext();
 
                 List<CodePart> codeParts;
-                FileContent content = file.ReadAll();
                 if (content.Category == FileCategory.KSM)
                 {
                     string prefix = programContext.Program.Count.ToString();
-                    codeParts = content.AsParts(fileName, prefix);
+                    codeParts = content.AsParts(path, prefix);
+                    programContext.AddParts(codeParts);
+                    shared.Cpu.StopCompileStopwatch();
                 }
                 else
                 {
-                    try
-                    {
-                        codeParts = shared.ScriptHandler.Compile(filePath, 1, content.String, "program", options);
-                    }
-                    catch (Exception)
-                    {
-                        // If it died due to a compile error, then we won't really be able to switch to program context
-                        // as was implied by calling Cpu.SwitchToProgramContext() up above.  The CPU needs to be
-                        // told that it's still in interpreter context, or else it fails to advance the interpreter's
-                        // instruction pointer and it will just try the "call run()" instruction again:
-                        shared.Cpu.BreakExecution(false);
-                        throw;
-                    }
+                    shared.Cpu.YieldProgram(YieldFinishedCompile.RunScript(path, 1, content.String, "program", options));
                 }
-                programContext.AddParts(codeParts);
-                shared.Cpu.StopCompileStopwatch();
             }
 
             // Because run() returns FIRST, and THEN the CPU jumps to the new program's first instruction that it set up,

@@ -214,10 +214,8 @@
     <Compile Include="Function\Trigonometry\FunctionArcTan.cs" />
     <Compile Include="Function\Trigonometry\FunctionArcTan2.cs" />
     <Compile Include="Function\Persistence\FunctionCreate.cs" />
-    <Compile Include="Function\Persistence\FunctionDelete.cs" />
     <Compile Include="Function\Persistence\FunctionExists.cs" />
     <Compile Include="Function\Persistence\FunctionOpen.cs" />
-    <Compile Include="Function\Persistence\FunctionRename.cs" />
     <Compile Include="Function\Persistence\FunctionSwitch.cs" />
     <Compile Include="Execution\YiedFinishedThreadedDetector.cs" />
     <Compile Include="Execution\YieldFinishedCompile.cs" />
@@ -321,6 +319,17 @@
     <Compile Include="Encapsulation\Suffixes\ThreeArgsSuffix.cs" />
     <Compile Include="Exceptions\KOSTermWidthObsoletionException.cs" />
     <Compile Include="Execution\IPopContextNotifyee.cs" />
+    <Compile Include="Function\Persistence\FunctionCopyDeprecated.cs" />
+    <Compile Include="Function\Persistence\FunctionRenameFileDeprecated.cs" />
+    <Compile Include="Function\Persistence\FunctionDeleteDeprecated.cs" />
+    <Compile Include="Function\Persistence\FunctionRenameVolumeDeprecated.cs" />
+    <Compile Include="Function\Persistence\FunctionPath.cs" />
+    <Compile Include="Function\Persistence\FunctionVolume.cs" />
+    <Compile Include="Function\Persistence\FunctionScriptPath.cs" />
+    <Compile Include="Function\Persistence\FunctionCopyPath.cs" />
+    <Compile Include="Function\Persistence\FunctionMovePath.cs" />
+    <Compile Include="Function\Persistence\FunctionDeletePath.cs" />
+    <Compile Include="Function\Persistence\FunctionCreateDir.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Compilation\CompiledObject-doc.md" />

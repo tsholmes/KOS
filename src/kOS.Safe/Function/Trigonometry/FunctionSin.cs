@@ -5,7 +5,7 @@ namespace kOS.Safe.Function.Trigonometry
     [Function("sin")]
     public class FunctionSin : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             double degrees = GetDouble(PopValueAssert(shared));
             AssertArgBottomAndConsume(shared);

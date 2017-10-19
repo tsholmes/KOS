@@ -6,7 +6,7 @@ namespace kOS.Safe.Function.Persistence
     [Function("switch")]
     public class FunctionSwitch : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             object volumeId = PopValueAssert(shared, true);
             AssertArgBottomAndConsume(shared);

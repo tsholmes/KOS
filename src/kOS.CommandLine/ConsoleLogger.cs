@@ -44,5 +44,10 @@ namespace kOS.CommandLine
             Console.WriteLine(s);
             //throw new NotImplementedException();
         }
+
+        public void LogWarningAndScreen(string s)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

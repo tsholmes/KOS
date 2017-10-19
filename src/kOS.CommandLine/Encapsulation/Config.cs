@@ -193,6 +193,54 @@ namespace kOS.CommandLine.Encapsulation
             }
         }
 
+        public string TelnetIPAddrString
+        {
+            get
+            {
+                return "";
+            }
+            set
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        public int TerminalFontDefaultSize
+        {
+            get
+            {
+                return 12;
+            }
+            set
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        public string TerminalFontName
+        {
+            get
+            {
+                return "Consolas";
+            }
+            set
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        public double TerminalBrightness
+        {
+            get
+            {
+                return 1.0;
+            }
+            set
+            {
+                throw new NotImplementedException();
+            }
+        }
+
         public void SaveConfig()
         {
             Settings.Default.Save();

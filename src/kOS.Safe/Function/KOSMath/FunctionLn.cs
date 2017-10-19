@@ -5,7 +5,7 @@ namespace kOS.Safe.Function.KOSMath
     [Function("ln")]
     public class FunctionLn : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             double argument = GetDouble(PopValueAssert(shared));
             AssertArgBottomAndConsume(shared);

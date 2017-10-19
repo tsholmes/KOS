@@ -5,7 +5,7 @@ namespace kOS.Safe.Function.Misc
     [Function("makebuiltindelegate")]
     public class MakeBuiltinDelegate : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             string name = PopValueAssert(shared).ToString();
             AssertArgBottomAndConsume(shared);

@@ -5,7 +5,7 @@ namespace kOS.Safe.Function.Misc
     [Function("reboot")]
     public class FunctionReboot : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             if (shared.Processor != null)
             {

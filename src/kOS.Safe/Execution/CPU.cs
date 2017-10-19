@@ -475,7 +475,6 @@ namespace kOS.Safe.Execution
                     if (contexts.Count == 1 && !silent)
                     {
                         if (shared.Screen != null) shared.Screen.Print("Program ended.");
-                        if (shared.BindingMgr != null) shared.BindingMgr.UnBindAll();
                         PrintStatistics();
                         stack.Clear();
                     }

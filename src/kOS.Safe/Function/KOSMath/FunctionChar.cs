@@ -5,7 +5,7 @@ namespace kOS.Safe.Function.KOSMath
     [Function("char")]
     public class FunctionChar : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             double argument = GetDouble(PopValueAssert(shared));
             AssertArgBottomAndConsume(shared);

@@ -3,12 +3,12 @@
     [Function("anglediff")]
     public class FunctionAngleDiff : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             double ang2 = GetDouble(PopValueAssert(shared));
             double ang1 = GetDouble(PopValueAssert(shared));
             AssertArgBottomAndConsume(shared);
-            double result = kOS.Safe.Utilities.Math.DegreeFix(ang2 - ang1, -180);
+            double result = kOS.Safe.Utilities.KOSMath.DegreeFix(ang2 - ang1, -180);
             ReturnValue = result;
         }
     }

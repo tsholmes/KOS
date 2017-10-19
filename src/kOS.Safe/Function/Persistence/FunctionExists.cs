@@ -1,14 +1,19 @@
-﻿namespace kOS.Safe.Function.Persistence
+﻿using kOS.Safe.Persistence;
+
+namespace kOS.Safe.Function.Persistence
 {
     [Function("exists")]
     public class FunctionExists : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
-            string fileName = PopValueAssert(shared, true).ToString();
+            object pathObject = PopValueAssert(shared, true);
             AssertArgBottomAndConsume(shared);
 
-            ReturnValue = shared.VolumeMgr.CurrentVolume.Exists(fileName);
+            GlobalPath path = shared.VolumeMgr.GlobalPathFromObject(pathObject);
+            Volume volume = shared.VolumeMgr.GetVolumeFromPath(path);
+
+            ReturnValue = volume.Exists(path);
         }
     }
 }

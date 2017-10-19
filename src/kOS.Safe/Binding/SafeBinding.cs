@@ -8,7 +8,7 @@ namespace kOS.Safe.Binding
 {
     public abstract class SafeBinding
     {
-        public abstract void AddTo(SharedObjects shared);
+        public abstract void AddTo(SafeSharedObjects shared);
 
         public virtual void Update()
         {

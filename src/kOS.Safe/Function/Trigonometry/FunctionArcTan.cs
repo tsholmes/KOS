@@ -5,7 +5,7 @@ namespace kOS.Safe.Function.Trigonometry
     [Function("arctan")]
     public class FunctionArcTan : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             double argument = GetDouble(PopValueAssert(shared));
             AssertArgBottomAndConsume(shared);

@@ -5,7 +5,7 @@ namespace kOS.Safe.Function.Misc
     [Function("print")]
     public class FunctionPrint : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             string textToPrint = PopValueAssert(shared).ToString();
             AssertArgBottomAndConsume(shared);

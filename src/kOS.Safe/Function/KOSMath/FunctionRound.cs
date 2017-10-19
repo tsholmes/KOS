@@ -6,7 +6,7 @@ namespace kOS.Safe.Function.KOSMath
     [Function("round")]
     public class FunctionRound : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             int decimals;
             int argCount = CountRemainingArgs(shared);

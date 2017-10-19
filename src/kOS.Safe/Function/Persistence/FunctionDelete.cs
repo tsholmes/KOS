@@ -6,7 +6,7 @@ namespace kOS.Safe.Function.Persistence
     [Function("delete")]
     public class FunctionDelete : SafeFunctionBase
     {
-        public override void Execute(SharedObjects shared)
+        public override void Execute(SafeSharedObjects shared)
         {
             object volumeId = PopValueAssert(shared, true);
             string fileName = PopValueAssert(shared, true).ToString();

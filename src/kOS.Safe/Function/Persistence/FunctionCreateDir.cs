@@ -2,8 +2,8 @@
 
 namespace kOS.Safe.Function.Persistence
 {
-    [Function("create")]
-    public class FunctionCreate : SafeFunctionBase
+    [Function("createdir")]
+    public class FunctionCreateDir : SafeFunctionBase
     {
         public override void Execute(SafeSharedObjects shared)
         {
@@ -13,9 +13,9 @@ namespace kOS.Safe.Function.Persistence
             GlobalPath path = shared.VolumeMgr.GlobalPathFromObject(pathObject);
             Volume volume = shared.VolumeMgr.GetVolumeFromPath(path);
 
-            VolumeFile volumeFile = volume.CreateFile(path);
+            VolumeDirectory volumeDirectory = volume.CreateDirectory(path);
 
-            ReturnValue = volumeFile;
+            ReturnValue = volumeDirectory;
         }
     }
 }

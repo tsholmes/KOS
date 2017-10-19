@@ -10,13 +10,13 @@ namespace kOS.CommandLine.Binding
     [AssemblyWalk(AttributeType = typeof(BindingAttribute), StaticRegisterMethod = "RegisterMethod")]
     public class BindingManager : IDisposable, IBindingManager
     {
-        private readonly SharedObjects shared;
+        private readonly SafeSharedObjects shared;
         private readonly List<kOS.Safe.Binding.SafeBinding> bindings = new List<kOS.Safe.Binding.SafeBinding>();
         private readonly Dictionary<string, BoundVariable> variables;
         private static readonly Dictionary<BindingAttribute, Type> rawAttributes = new Dictionary<BindingAttribute, Type>();
         //private FlightControlManager flightControl;
 
-        public BindingManager(SharedObjects shared)
+        public BindingManager(SafeSharedObjects shared)
         {
             variables = new Dictionary<string, BoundVariable>(StringComparer.OrdinalIgnoreCase);
             this.shared = shared;
@@ -85,6 +85,16 @@ namespace kOS.CommandLine.Binding
             AddBoundVariable(name, dlg, null);
         }
 
+        public bool HasGetter(string name)
+        {
+            if (variables.ContainsKey(name))
+            {
+                BoundVariable variable = variables[name];
+                return variable.Get != null;
+            }
+            return false;
+        }
+
         public void AddGetter(IEnumerable<string> names, BindingGetDlg dlg)
         {
             foreach (var name in names)
@@ -128,14 +138,6 @@ namespace kOS.CommandLine.Binding
             //if (flightControl != null)
             //{
             //    flightControl.ToggleFlyByWire(paramName, enabled);
-            //}
-        }
-
-        public void UnBindAll()
-        {
-            //if (flightControl != null)
-            //{
-            //    flightControl.UnBind();
             //}
         }
 
