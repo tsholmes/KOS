@@ -52,7 +52,8 @@ namespace kOS.CommandLine.Execution
             //shared.SoundMaker = Sound.SoundMaker.Instance;
 
             // add archive.
-            var archive = new Archive(Path.GetTempPath());
+            //var archive = new Archive("../../../../kerboscript_tests");
+            var archive = new Archive("./kerboscript_tests");
             shared.VolumeMgr.Add(archive);
             shared.VolumeMgr.SwitchTo(archive);
 
