@@ -22,7 +22,7 @@ namespace kOS.Safe.Execution
             Trigger = 2
         }
 
-        private readonly Stack stack;
+        private readonly IStack stack;
         private readonly VariableScope globalVariables;
         private Section currentRunSection;
         private List<YieldFinishedDetector> triggerYields;
