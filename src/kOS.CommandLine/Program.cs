@@ -40,7 +40,9 @@ namespace kOS.CommandLine
             //Console.WindowWidth = 160;
             //System.Threading.Thread.Sleep(2000);
             var worker = new Execution.kOSWorker();
+            int totalInstructions = 0;
             worker.FixedUpdate();
+            totalInstructions += worker.Shared.Cpu.InstructionsThisUpdate;
             //worker.PushScript(simpleTest);
             //worker.PushScript(scalarAddBenchmark);
             //worker.PushScript(fib);
@@ -49,8 +51,10 @@ namespace kOS.CommandLine
             while (worker.GetMode() == Safe.Module.ProcessorModes.READY)
             {
                 worker.FixedUpdate();
+                totalInstructions += worker.Shared.Cpu.InstructionsThisUpdate;
                 //System.Threading.Thread.Sleep(20);
             }
+            Console.WriteLine("Total Instructions: " + totalInstructions);
             //var result = worker.Shared.Cpu.ProfileResult;
             //if (result != null) Console.WriteLine(string.Join("\r\n", result.ToArray()));
             //Console.WriteLine("Press any key to exit...");
