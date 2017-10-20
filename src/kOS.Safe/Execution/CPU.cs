@@ -22,7 +22,7 @@ namespace kOS.Safe.Execution
             Trigger = 2
         }
 
-        private readonly IStack stack;
+        private readonly Stack stack;
         private readonly VariableScope globalVariables;
         private Section currentRunSection;
         private List<YieldFinishedDetector> triggerYields;
@@ -292,8 +292,7 @@ namespace kOS.Safe.Execution
         /// </summary>
         public void PushAboveStack(object thing)
         {
-            PushStack(thing);
-            MoveStackPointer(-1);
+            stack.PushAbove(thing);
         }
 
         /// <summary>
@@ -306,8 +305,7 @@ namespace kOS.Safe.Execution
             object returnVal = new int(); // bogus return val if given a bogus "pop zero things" request.
             while (howMany > 0)
             {
-                MoveStackPointer(1);
-                returnVal = PopStack();
+                returnVal = stack.PopAbove();
                 --howMany;
             }
 
@@ -559,11 +557,6 @@ namespace kOS.Safe.Execution
         public object PopStack()
         {
             return stack.Pop();
-        }
-
-        public void MoveStackPointer(int delta)
-        {
-            stack.MoveStackPointer(delta);
         }
 
         /// <summary>Throw exception if the user delegate is not one the CPU can call right now.</summary>
