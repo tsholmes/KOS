@@ -9,6 +9,17 @@ namespace kOS.CommandLine.Encapsulation
 {
     public class Config : Structure, IConfig
     {
+        private static readonly SuffixMap suffixes;
+
+        static Config()
+        {
+            suffixes = StructureSuffixes<Config>();
+        }
+
+        public Config() : base(suffixes)
+        {
+        }
+
         private static Config fetch;
         public static Config Fetch
         {

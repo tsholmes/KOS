@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -35,7 +36,11 @@ namespace kOS.CommandLine.Execution
         {
             Opcode.InitMachineCodeData();
             CompiledObject.InitTypeData();
+
+            Stopwatch walkTime = Stopwatch.StartNew();
             AssemblyWalkAttribute.Walk();
+            walkTime.Stop();
+            Console.WriteLine("Walk Time: " + walkTime.ElapsedMilliseconds + "ms");
 
             shared = new SafeSharedObjects();
             shared.Processor = this;

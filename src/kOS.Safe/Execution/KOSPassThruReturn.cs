@@ -41,7 +41,9 @@ namespace kOS.Safe.Execution
         // Suffix doesn't mean much, other than allowing it to
         // be the value of DelegateSuffixResult.value.
     {
-        public KOSPassThruReturn()
+        private static readonly SuffixMap suffixes = new SuffixMap();
+
+        public KOSPassThruReturn() : base(suffixes)
         {
         }
     }

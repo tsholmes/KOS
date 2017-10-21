@@ -15,10 +15,17 @@ namespace kOS.Safe.Encapsulation
     [kOS.Safe.Utilities.KOSNomenclature("NoDelegate")]
     public class NoDelegate : UserDelegate
     {
-        static private int sameHashForAllInstances =
+        private static readonly SuffixMap suffixes;
+
+        static NoDelegate()
+        {
+            suffixes = UserDelegateSuffixes<NoDelegate>();
+        }
+
+        static private readonly int sameHashForAllInstances =
             ("All EmptyDelegate Instances are Equal 0987654321.123456789").GetHashCode();
 
-        public NoDelegate(ICpu cpu) : base(cpu, (cpu == null ? null : cpu.GetCurrentContext()), -1, false)
+        public NoDelegate(ICpu cpu) : base(cpu, (cpu == null ? null : cpu.GetCurrentContext()), -1, false, suffixes)
         {
         }
 

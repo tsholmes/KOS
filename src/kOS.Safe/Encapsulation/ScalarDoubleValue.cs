@@ -3,7 +3,16 @@
     [kOS.Safe.Utilities.KOSNomenclature("Scalar", KOSToCSharp = false)]
     public class ScalarDoubleValue : ScalarValue
     {
-        public static ScalarDoubleValue Zero = new ScalarDoubleValue(0);
+        private static readonly SuffixMap suffixes;
+
+        static ScalarDoubleValue()
+        {
+            suffixes = ScalarSuffixes<ScalarDoubleValue>();
+
+            Zero = new ScalarDoubleValue(0);
+        }
+
+        public static ScalarDoubleValue Zero;
 
         public override bool IsDouble
         {
@@ -20,7 +29,7 @@
             get { return (double)Value != 0d; }
         }
 
-        public ScalarDoubleValue(double value)
+        public ScalarDoubleValue(double value) : base(suffixes)
         {
             Value = value;
         }

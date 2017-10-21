@@ -1,4 +1,5 @@
 ﻿using kOS.Safe.Encapsulation.Suffixes;
+using kOS.Safe.Encapsulation;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -28,14 +29,14 @@ namespace kOS.Safe.Test.Structure
         [Test]
         public void CanExecuteDelegate()
         {
-            var mockDel = Substitute.For<TwoArgsSuffix<kOS.Safe.Encapsulation.Structure, kOS.Safe.Encapsulation.Structure>.Del<object, object>>();
+            var mockDel = Substitute.For<TwoArgsSuffix<kOS.Safe.Encapsulation.Structure, kOS.Safe.Encapsulation.Structure>.Del>();
 
             var suffix = new TwoArgsSuffix<kOS.Safe.Encapsulation.Structure, kOS.Safe.Encapsulation.Structure>(mockDel);
             var del = suffix.Get() as DelegateSuffixResult;
             Assert.IsNotNull(del);
             var delegateAsDelegate = del.Del;
             Assert.IsNotNull(delegateAsDelegate);
-            delegateAsDelegate.DynamicInvoke(new object(), new object());
+            delegateAsDelegate.DynamicInvoke(new ScalarIntValue(0), new ScalarIntValue(0));
 
             mockDel.ReceivedWithAnyArgs(1);
         }

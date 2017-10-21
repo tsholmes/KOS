@@ -15,6 +15,18 @@ namespace kOS.Safe.Encapsulation
     [kOS.Safe.Utilities.KOSNomenclature("UserDelegate")]
     public class UserDelegate : KOSDelegate, IUserDelegate, IPopContextNotifyee
     {
+        private static readonly SuffixMap suffixes;
+
+        protected static SuffixMap UserDelegateSuffixes<T>() where T : UserDelegate
+        {
+            return DelegateSuffixes<T>();
+        }
+
+        static UserDelegate()
+        {
+            suffixes = UserDelegateSuffixes<UserDelegate>();
+        }
+
         private WeakReference weakProgContext;
         public IProgramContext ProgContext
         {
@@ -134,8 +146,11 @@ namespace kOS.Safe.Encapsulation
         /// <param name="useClosure">If true, then a snapshot of the current scoping stack, and thus a persistent ref to its variables,
         ///   will be kept in the delegate so it can be called later as a callback with closure.  Set to false if the
         ///   function is only getting called instantly using whatever the scope is at the time of the call.</param>
-        public UserDelegate(ICpu cpu, IProgramContext context, int entryPoint, bool useClosure) :
-            base(cpu)
+        public UserDelegate(ICpu cpu, IProgramContext context, int entryPoint, bool useClosure) : this(cpu, context, entryPoint, useClosure, suffixes)
+        {
+        }
+
+        protected UserDelegate(ICpu cpu, IProgramContext context, int entryPoint, bool useClosure, SuffixMap instanceSuffixes) : base(cpu, instanceSuffixes)
         {
             ProgContext = context;
             EntryPoint = entryPoint;
@@ -145,7 +160,7 @@ namespace kOS.Safe.Encapsulation
                 Cpu.AddPopContextNotifyee(this);
         }
 
-        public UserDelegate(UserDelegate oldCopy) : base(oldCopy)
+        public UserDelegate(UserDelegate oldCopy) : base(oldCopy, suffixes)
         {
             ProgContext = oldCopy.ProgContext;
             EntryPoint = oldCopy.EntryPoint;

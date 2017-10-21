@@ -11,20 +11,28 @@ namespace kOS.Safe.Encapsulation
         /// </summary>
         public const double KpaToAtm = 0.00986923266716012830002467308167;
 
+        private static readonly SuffixMap suffixes;
+
         static ConstantValue()
         {
-            AddGlobalSuffix<ConstantValue>("G", new StaticSuffix<ScalarValue>(() => 6.67384*Math.Pow(10,-11)));
-            AddGlobalSuffix<ConstantValue>("E", new StaticSuffix<ScalarValue>(() => Math.E));
-            AddGlobalSuffix<ConstantValue>("PI", new StaticSuffix<ScalarValue>(() => Math.PI));
-            AddGlobalSuffix<ConstantValue>("C", new StaticSuffix<ScalarValue>(() => 299792458.0, "Speed of light in m/s")); 
-            AddGlobalSuffix<ConstantValue>("ATMTOKPA", new StaticSuffix<ScalarValue>(() => 101.325, "atmospheres to kiloPascals" ));
-            AddGlobalSuffix<ConstantValue>("KPATOATM", new StaticSuffix<ScalarValue>(() => KpaToAtm, "kiloPascals to atmospheres"));
+            suffixes = StructureSuffixes<ConstantValue>();
+
+            suffixes.AddSuffix("G", new NoArgsSuffix<ConstantValue, ScalarValue>((constants) => () => 6.67384*Math.Pow(10,-11)));
+            suffixes.AddSuffix("E", new NoArgsSuffix<ConstantValue, ScalarValue>((constants) => () => Math.E));
+            suffixes.AddSuffix("PI", new NoArgsSuffix<ConstantValue, ScalarValue>((constants) => () => Math.PI));
+            suffixes.AddSuffix("C", new NoArgsSuffix<ConstantValue, ScalarValue>((constants) => () => 299792458.0, "Speed of light in m/s")); 
+            suffixes.AddSuffix("ATMTOKPA", new NoArgsSuffix<ConstantValue, ScalarValue>((constants) => () => 101.325, "atmospheres to kiloPascals" ));
+            suffixes.AddSuffix("KPATOATM", new NoArgsSuffix<ConstantValue, ScalarValue>((constants) => () => KpaToAtm, "kiloPascals to atmospheres"));
 
             // pi/180 :
-            AddGlobalSuffix<ConstantValue>("DEGTORAD", new StaticSuffix<ScalarValue>(() => 0.01745329251994329576923690768489, "degrees to radians"));
+            suffixes.AddSuffix("DEGTORAD", new NoArgsSuffix<ConstantValue, ScalarValue>((constants) => () => 0.01745329251994329576923690768489, "degrees to radians"));
             
             // 180/pi :
-            AddGlobalSuffix<ConstantValue>("RADTODEG", new StaticSuffix<ScalarValue>(() => 57.295779513082320876798154814105, "radians to degrees"));
+            suffixes.AddSuffix("RADTODEG", new NoArgsSuffix<ConstantValue, ScalarValue>((constants) => () => 57.295779513082320876798154814105, "radians to degrees"));
+        }
+
+        public ConstantValue() : base(suffixes)
+        {
         }
 
         public override string ToString()

@@ -9,20 +9,22 @@ using kOS.Safe.Serialization;
 namespace kOS.Safe
 {
     [kOS.Safe.Utilities.KOSNomenclature("Collection")]
-    public abstract class CollectionValue<T, C> : EnumerableValue<T, C> where C : ICollection<T> where T : Structure
+    public abstract class CollectionValue<C> : EnumerableValue<C> where C : ICollection<Structure>
     {
-        protected readonly C Collection;
-
-        public CollectionValue(string label, C collection) : base(label, collection)
+        protected static SuffixMap CollectionSuffixes<T>() where T : CollectionValue<C>
         {
-            this.Collection = collection;
+            SuffixMap suffixes = EnumerableSuffixes<T>();
 
-            InitializeCollectionSuffixes();
+            suffixes.AddSuffix("CLEAR", new NoArgsVoidSuffix<T>((collection) => collection.Collection.Clear));
+
+            return suffixes;
         }
 
-        private void InitializeCollectionSuffixes()
+        protected readonly C Collection;
+
+        public CollectionValue(string label, C collection, SuffixMap suffixes) : base(label, collection, suffixes)
         {
-            AddSuffix("CLEAR", new NoArgsVoidSuffix(Collection.Clear));
+            this.Collection = collection;
         }
     }
 }

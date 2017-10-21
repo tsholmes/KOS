@@ -8,9 +8,20 @@ namespace kOS.Safe.Persistence
     [kOS.Safe.Utilities.KOSNomenclature("VolumeFile")]
     public abstract class VolumeFile : VolumeItem
     {
-        protected VolumeFile(Volume volume, VolumePath path) : base(volume, path)
+        protected static SuffixMap VolumeFileSuffixes<T>() where T : VolumeFile
         {
-            InitializeSuffixes();
+            SuffixMap suffixes = VolumeItemSuffixes<T>();
+
+            suffixes.AddSuffix("READALL", new Suffix<T, FileContent>((vfile) => vfile.ReadAll));
+            suffixes.AddSuffix("WRITE", new OneArgsSuffix<T, BooleanValue, Structure>((vfile) => (str) => vfile.WriteObject(str)));
+            suffixes.AddSuffix("WRITELN", new OneArgsSuffix<T, BooleanValue, StringValue>((vfile) => (str) => new BooleanValue(vfile.WriteLn(str))));
+            suffixes.AddSuffix("CLEAR", new NoArgsVoidSuffix<T>((vfile) => vfile.Clear));
+
+            return suffixes;
+        }
+
+        protected VolumeFile(Volume volume, VolumePath path, SuffixMap suffixes) : base(volume, path, suffixes)
+        {
         }
 
         public abstract FileContent ReadAll();
@@ -32,14 +43,6 @@ namespace kOS.Safe.Persistence
         public override string ToString()
         {
             return Name;
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("READALL", new Suffix<FileContent>(ReadAll));
-            AddSuffix("WRITE", new OneArgsSuffix<BooleanValue, Structure>(str => WriteObject(str)));
-            AddSuffix("WRITELN", new OneArgsSuffix<BooleanValue, StringValue>(str => new BooleanValue(WriteLn(str))));
-            AddSuffix("CLEAR", new NoArgsVoidSuffix(Clear));
         }
 
         private bool WriteObject(Structure content)

@@ -1,46 +1,26 @@
 namespace kOS.Safe.Encapsulation.Suffixes
 {
-    public class TwoArgsSuffix<TReturn, TParam, TParam2> : SuffixBase where TReturn : Structure where TParam : Structure where TParam2 : Structure
+    public class TwoArgsSuffix<T, TReturn, TParam, TParam2> : SuffixBase<T, TwoArgsSuffix<T, TReturn, TParam, TParam2>.Del>
+        where T : Structure where TReturn : Structure where TParam : Structure where TParam2 : Structure
     {
-        private readonly Del<TReturn, TParam, TParam2> del;
+        public delegate TReturn Del(TParam one, TParam2 two);
 
-        public delegate TInnerReturn Del<out TInnerReturn, in TInnerParam, in TInnerParam2>(TInnerParam one, TInnerParam2 two);
+        public TwoArgsSuffix(GetDel get, string description = "") : base(get, description) { }
 
-        public TwoArgsSuffix(Del<TReturn, TParam, TParam2> del, string description = "")
-            : base(description)
+        protected override object Call(Del del, object[] args)
         {
-            this.del = del;
-        }
-
-        public override ISuffixResult Get()
-        {
-            return new DelegateSuffixResult(del, call);
-        }
-
-        private object call(object[] args)
-        {
-            return (TReturn)del((TParam)args[0], (TParam2)args[1]);
+            return del((TParam)args[0], (TParam2)args[1]);
         }
     }
 
-    public class TwoArgsSuffix<TParam, TParam2> : SuffixBase where TParam : Structure where TParam2 : Structure
+    public class TwoArgsVoidSuffix<T, TParam, TParam2> : SuffixBase<T, TwoArgsVoidSuffix<T, TParam, TParam2>.Del>
+        where T : Structure where TParam : Structure where TParam2 : Structure
     {
-        private readonly Del<TParam, TParam2> del;
+        public delegate void Del(TParam one, TParam2 two);
 
-        public delegate void Del<in TInnerParam, in TInnerParam2>(TInnerParam one, TInnerParam2 two);
+        public TwoArgsVoidSuffix(GetDel get, string description = "") : base(get, description) { }
 
-        public TwoArgsSuffix(Del<TParam, TParam2> del, string description = "")
-            : base(description)
-        {
-            this.del = del;
-        }
-
-        public override ISuffixResult Get()
-        {
-            return new DelegateSuffixResult(del, call);
-        }
-
-        private object call(object[] args)
+        protected override object Call(Del del, object[] args)
         {
             del((TParam)args[0], (TParam2)args[1]);
             return null;

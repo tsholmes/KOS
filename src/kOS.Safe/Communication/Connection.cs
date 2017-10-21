@@ -7,20 +7,23 @@ namespace kOS.Safe.Communication
     [kOS.Safe.Utilities.KOSNomenclature("Connection")]
     public abstract class Connection : Structure
     {
+        static SuffixMap ConnectionSuffixes<T>() where T : Connection
+        {
+            SuffixMap suffixes = StructureSuffixes<T>();
+            
+            suffixes.AddSuffix("ISCONNECTED", new Suffix<T, BooleanValue>((connection) => () => connection.Connected));
+            suffixes.AddSuffix("DELAY", new Suffix<T, ScalarValue>((connection) => () => connection.Delay));
+            suffixes.AddSuffix("SENDMESSAGE", new OneArgsSuffix<T, BooleanValue, Structure>((connection) => connection.SendMessage));
+            suffixes.AddSuffix("DESTINATION", new NoArgsSuffix<T, Structure>((connection) => connection.Destination));
+
+            return suffixes;
+        }
+
         public abstract bool Connected { get; }
         public abstract double Delay { get; }
 
-        public Connection()
+        protected Connection(SuffixMap suffixes) : base(suffixes)
         {
-            InitializeSuffixes();
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("ISCONNECTED", new Suffix<BooleanValue>(() => Connected));
-            AddSuffix("DELAY", new Suffix<ScalarValue>(() => Delay));
-            AddSuffix("SENDMESSAGE", new OneArgsSuffix<BooleanValue, Structure>(SendMessage));
-            AddSuffix("DESTINATION", new NoArgsSuffix<Structure>(Destination));
         }
 
         protected abstract Structure Destination();

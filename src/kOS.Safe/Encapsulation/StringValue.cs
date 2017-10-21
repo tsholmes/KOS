@@ -19,6 +19,39 @@ namespace kOS.Safe.Encapsulation
     [KOSNomenclature("String")]
     public class StringValue : PrimitiveStructure, IIndexable, IConvertible, IEnumerable<string>
     {
+        private static readonly SuffixMap suffixes;
+
+        static StringValue()
+        {
+            suffixes = StructureSuffixes<StringValue>();
+
+            suffixes.AddSuffix("LENGTH",     new NoArgsSuffix<StringValue, ScalarValue>((str) => () => str.Length));
+            suffixes.AddSuffix("SUBSTRING",  new TwoArgsSuffix<StringValue, StringValue, ScalarValue, ScalarValue>((str) => (one, two) => str.Substring(one, two)));
+            suffixes.AddSuffix("CONTAINS",   new OneArgsSuffix<StringValue, BooleanValue, StringValue>((str) => (one) => str.Contains(one)));
+            suffixes.AddSuffix("ENDSWITH",   new OneArgsSuffix<StringValue, BooleanValue, StringValue>((str) => (one) => str.EndsWith(one)));
+            suffixes.AddSuffix("FINDAT",     new TwoArgsSuffix<StringValue, ScalarValue, StringValue, ScalarValue>((str) => (one, two) => str.FindAt(one, two)));
+            suffixes.AddSuffix("INSERT",     new TwoArgsSuffix<StringValue, StringValue, ScalarValue, StringValue>((str) => (one, two) => str.Insert(one, two)));
+            suffixes.AddSuffix("FINDLASTAT", new TwoArgsSuffix<StringValue, ScalarValue, StringValue, ScalarValue>((str) => (one, two) => str.FindLastAt(one, two)));
+            suffixes.AddSuffix("PADLEFT",    new OneArgsSuffix<StringValue, StringValue, ScalarValue>((str) => (one) => str.PadLeft(one)));
+            suffixes.AddSuffix("PADRIGHT",   new OneArgsSuffix<StringValue, StringValue, ScalarValue>((str) => (one) => str.PadRight(one)));
+            suffixes.AddSuffix("REMOVE",     new TwoArgsSuffix<StringValue, StringValue, ScalarValue, ScalarValue>((str) => (one, two) => str.Remove(one, two)));
+            suffixes.AddSuffix("REPLACE",    new TwoArgsSuffix<StringValue, StringValue, StringValue, StringValue>((str) => (one, two) => str.Replace(one, two)));
+            suffixes.AddSuffix("SPLIT",      new OneArgsSuffix<StringValue, ListValue, StringValue>((str) => (one) => str.SplitToList(one)));
+            suffixes.AddSuffix("STARTSWITH", new OneArgsSuffix<StringValue, BooleanValue, StringValue>((str) => (one) => str.StartsWith(one)));
+            suffixes.AddSuffix("TOLOWER",    new NoArgsSuffix<StringValue, StringValue>((str) => () => str.ToLower()));
+            suffixes.AddSuffix("TOUPPER",    new NoArgsSuffix<StringValue, StringValue>((str) => () => str.ToUpper()));
+            suffixes.AddSuffix("TRIM",       new NoArgsSuffix<StringValue, StringValue>((str) => () => str.Trim()));
+            suffixes.AddSuffix("TRIMEND",    new NoArgsSuffix<StringValue, StringValue>((str) => () => str.TrimEnd()));
+            suffixes.AddSuffix("TRIMSTART",  new NoArgsSuffix<StringValue, StringValue>((str) => () => str.TrimStart()));
+            suffixes.AddSuffix("MATCHESPATTERN", new OneArgsSuffix<StringValue, BooleanValue, StringValue>((str) => (one) => str.MatchesPattern(one)));
+            suffixes.AddSuffix(new[] { "TONUMBER", "TOSCALAR" }, new VarArgsSuffix<StringValue, ScalarValue, Structure>((str) => str.ToScalarVarArgsWrapper));
+
+            // Aliased "IndexOf" with "Find" to match "FindAt" (since IndexOfAt doesn't make sense, but I wanted to stick with common/C# names when possible)
+            suffixes.AddSuffix(new[] { "INDEXOF",     "FIND" },     new OneArgsSuffix<StringValue, ScalarValue, StringValue>((str) => (one) => str.IndexOf(one)));
+            suffixes.AddSuffix(new[] { "LASTINDEXOF", "FINDLAST" }, new OneArgsSuffix<StringValue, ScalarValue, StringValue>((str) => (s) => str.LastIndexOf(s)));
+            suffixes.AddSuffix ("ITERATOR", new NoArgsSuffix<StringValue, Enumerator>((str) => () => new Enumerator(str.GetEnumerator())));
+        }
+
         private readonly string internalString;
 
         public StringValue(): 
@@ -26,22 +59,17 @@ namespace kOS.Safe.Encapsulation
         {
         }
 
-        public StringValue(string stringValue)
+        public StringValue(string stringValue) : base(suffixes)
         {
             internalString = stringValue;
-            RegisterInitializer(StringInitializeSuffixes);
         }
 
-        public StringValue(StringValue stringValue)
+        public StringValue(StringValue stringValue) : this(stringValue.ToString())
         {
-            internalString = stringValue.ToString();
-            StringInitializeSuffixes();
         }
 
-        public StringValue(char ch)
+        public StringValue(char ch) : this(new string(new char[] {ch}))
         {
-            internalString = new string(new char[] {ch});
-            StringInitializeSuffixes();
         }
 
         public override object ToPrimitive()
@@ -228,10 +256,10 @@ namespace kOS.Safe.Encapsulation
         }
 
         // As the regular Split, except returning a ListValue rather than an array.
-        public ListValue<StringValue> SplitToList(string separator)
+        public ListValue SplitToList(string separator)
         {
             string[] split = Regex.Split(internalString, Regex.Escape(separator), RegexOptions.IgnoreCase);
-            ListValue<StringValue> returnList = new ListValue<StringValue>();
+            ListValue returnList = new ListValue();
             foreach (string s in split)
                 returnList.Add(new StringValue(s));
             return returnList;
@@ -240,35 +268,6 @@ namespace kOS.Safe.Encapsulation
         public BooleanValue MatchesPattern(string pattern)
         {
             return new BooleanValue(Regex.IsMatch(internalString, pattern, RegexOptions.IgnoreCase));
-        }
-
-        private void StringInitializeSuffixes()
-        {
-            AddSuffix("LENGTH",     new NoArgsSuffix<ScalarValue>( () => Length));
-            AddSuffix("SUBSTRING",  new TwoArgsSuffix<StringValue, ScalarValue, ScalarValue>( (one, two) => Substring(one, two)));
-            AddSuffix("CONTAINS",   new OneArgsSuffix<BooleanValue, StringValue>( one => Contains(one)));
-            AddSuffix("ENDSWITH",   new OneArgsSuffix<BooleanValue, StringValue>( one => EndsWith(one)));
-            AddSuffix("FINDAT",     new TwoArgsSuffix<ScalarValue, StringValue, ScalarValue>( (one, two) => FindAt(one, two)));
-            AddSuffix("INSERT",     new TwoArgsSuffix<StringValue, ScalarValue, StringValue>( (one, two) => Insert(one, two)));
-            AddSuffix("FINDLASTAT", new TwoArgsSuffix<ScalarValue, StringValue, ScalarValue>( (one, two) => FindLastAt(one, two)));
-            AddSuffix("PADLEFT",    new OneArgsSuffix<StringValue, ScalarValue>( one => PadLeft(one)));
-            AddSuffix("PADRIGHT",   new OneArgsSuffix<StringValue, ScalarValue>( one => PadRight(one)));
-            AddSuffix("REMOVE",     new TwoArgsSuffix<StringValue, ScalarValue, ScalarValue>( (one, two) => Remove(one, two)));
-            AddSuffix("REPLACE",    new TwoArgsSuffix<StringValue, StringValue, StringValue>( (one, two) => Replace(one, two)));
-            AddSuffix("SPLIT",      new OneArgsSuffix<ListValue<StringValue>, StringValue>( one => SplitToList(one)));
-            AddSuffix("STARTSWITH", new OneArgsSuffix<BooleanValue, StringValue>( one => StartsWith(one)));
-            AddSuffix("TOLOWER",    new NoArgsSuffix<StringValue>(() => ToLower()));
-            AddSuffix("TOUPPER",    new NoArgsSuffix<StringValue>(() => ToUpper()));
-            AddSuffix("TRIM",       new NoArgsSuffix<StringValue>(() => Trim()));
-            AddSuffix("TRIMEND",    new NoArgsSuffix<StringValue>(() => TrimEnd()));
-            AddSuffix("TRIMSTART",  new NoArgsSuffix<StringValue>(() => TrimStart()));
-            AddSuffix("MATCHESPATTERN", new OneArgsSuffix<BooleanValue, StringValue>( one => MatchesPattern(one)));
-            AddSuffix(new[] { "TONUMBER", "TOSCALAR" }, new VarArgsSuffix<ScalarValue, Structure>(ToScalarVarArgsWrapper));
-
-            // Aliased "IndexOf" with "Find" to match "FindAt" (since IndexOfAt doesn't make sense, but I wanted to stick with common/C# names when possible)
-            AddSuffix(new[] { "INDEXOF",     "FIND" },     new OneArgsSuffix<ScalarValue, StringValue>   ( one => IndexOf(one)));
-            AddSuffix(new[] { "LASTINDEXOF", "FINDLAST" }, new OneArgsSuffix<ScalarValue, StringValue>   ( s => LastIndexOf(s)));
-            AddSuffix ("ITERATOR", new NoArgsSuffix<Enumerator>( () => new Enumerator(GetEnumerator()) ));
         }
 
         public static bool operator ==(StringValue val1, StringValue val2)

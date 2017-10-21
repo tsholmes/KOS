@@ -5,6 +5,13 @@ namespace kOS.Safe.Encapsulation.Suffixes
     [kOS.Safe.Utilities.KOSNomenclature("ConfigKey")] // not even sure when anyone will ever see this in a script.
     public class ConfigKey : Structure
     {
+        private static readonly SuffixMap suffixes;
+
+        static ConfigKey()
+        {
+            suffixes = StructureSuffixes<ConfigKey>();
+        }
+
         private object val;
         public string StringKey {get;private set;}
         public string Alias {get;private set;}
@@ -14,7 +21,7 @@ namespace kOS.Safe.Encapsulation.Suffixes
         public object MinValue {get;private set;}
         public object MaxValue {get;private set;}
 
-        public ConfigKey(string stringKey, string alias, string name, object defaultValue, object min, object max, Type type)
+        public ConfigKey(string stringKey, string alias, string name, object defaultValue, object min, object max, Type type) : base(suffixes)
         {
             StringKey = stringKey;
             Alias = alias;

@@ -10,7 +10,7 @@ namespace kOS.Safe.Encapsulation.Suffixes
     public class DelegateSuffixResult : ISuffixResult
     {
         private readonly Delegate del;
-        private readonly CallDel call;
+        private readonly SuffixCallDel call;
         private Structure value;
 
         public Delegate Del
@@ -23,9 +23,7 @@ namespace kOS.Safe.Encapsulation.Suffixes
             get { return value; }
         }
 
-        public delegate object CallDel(object[] args);
-
-        public DelegateSuffixResult(Delegate del, CallDel call)
+        public DelegateSuffixResult(Delegate del, SuffixCallDel call)
         {
             this.del = del;
             this.call = call;

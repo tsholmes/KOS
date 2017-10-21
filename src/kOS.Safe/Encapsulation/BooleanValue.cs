@@ -7,19 +7,20 @@ namespace kOS.Safe.Encapsulation
     [kOS.Safe.Utilities.KOSNomenclature("Boolean")]
     public class BooleanValue : PrimitiveStructure, IConvertible
     {
+        private static readonly SuffixMap suffixes;
+
+        static BooleanValue()
+        {
+            suffixes = StructureSuffixes<BooleanValue>();
+        }
+
         private readonly bool internalValue;
 
         public bool Value { get { return internalValue; } }
 
-        public BooleanValue(bool value)
+        public BooleanValue(bool value) : base(suffixes)
         {
             internalValue = value;
-            InitializeSuffixes();
-        }
-
-        public void InitializeSuffixes()
-        {
-            // TODO: Add suffixes as needed
         }
 
         public override object ToPrimitive()

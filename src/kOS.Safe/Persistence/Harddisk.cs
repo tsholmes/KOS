@@ -10,6 +10,13 @@ namespace kOS.Safe.Persistence
     [kOS.Safe.Utilities.KOSNomenclature("LocalVolume")]
     public sealed class Harddisk : Volume
     {
+        private static readonly SuffixMap suffixes;
+
+        static Harddisk()
+        {
+            suffixes = VolumeSuffixes<Harddisk>();
+        }
+
         public HarddiskDirectory RootHarddiskDirectory { get; set; }
 
         public override VolumeDirectory Root {
@@ -19,7 +26,7 @@ namespace kOS.Safe.Persistence
             }
         }
 
-        public Harddisk(int size)
+        public Harddisk(int size) : base(suffixes)
         {
             Capacity = size;
             RootHarddiskDirectory = new HarddiskDirectory(this, VolumePath.EMPTY);

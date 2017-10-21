@@ -11,6 +11,13 @@ namespace kOS.Safe.Persistence
     [kOS.Safe.Utilities.KOSNomenclature("Archive")]
     public class Archive : Volume
     {
+        private static readonly SuffixMap suffixes;
+
+        static Archive()
+        {
+            suffixes = VolumeSuffixes<Archive>();
+        }
+
         public const string ArchiveName = "Archive";
         public ArchiveDirectory RootArchiveDirectory { get; private set; }
 
@@ -22,7 +29,7 @@ namespace kOS.Safe.Persistence
             }
         }
 
-        public Archive(string archiveFolder)
+        public Archive(string archiveFolder) : base(suffixes)
         {
             ArchiveFolder = Path.GetFullPath(archiveFolder).TrimEnd(VolumePath.PathSeparator);
             CreateArchiveDirectory();

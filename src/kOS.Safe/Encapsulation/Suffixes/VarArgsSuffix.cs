@@ -1,24 +1,16 @@
 namespace kOS.Safe.Encapsulation.Suffixes
 {
-    public class VarArgsSuffix<TReturn, TParam> : SuffixBase where TReturn : Structure where TParam : Structure
+    public class VarArgsSuffix<T, TReturn, TParam> : SuffixBase<T, VarArgsSuffix<T, TReturn, TParam>.Del>
+        where T : Structure where TReturn : Structure where TParam : Structure
     {
-        private readonly Del<TReturn, TParam> del;
+        public delegate TReturn Del(params TParam[] arguments);
 
-        public delegate TInnerReturn Del<out TInnerReturn, in TInnerParam>(params TInnerParam[] arguments);
+        public VarArgsSuffix(GetDel get, string description = "") : base(get, description) { }
 
-        public VarArgsSuffix(Del<TReturn, TParam> del, string description = "") : base(description)
+        protected override object Call(Del del, object[] args)
         {
-            this.del = del;
-        }
-
-        public override ISuffixResult Get()
-        {
-            return new DelegateSuffixResult(del, call);
-        }
-
-        private object call(object[] args)
-        {
-            return (TReturn)del((TParam[])args[0]);
+            del((TParam[])args[0]);
+            return null;
         }
     }
 }

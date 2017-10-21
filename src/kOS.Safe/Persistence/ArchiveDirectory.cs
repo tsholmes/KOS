@@ -10,10 +10,17 @@ namespace kOS.Safe.Persistence
     [kOS.Safe.Utilities.KOSNomenclature("VolumeDirectory", KOSToCSharp = false)]
     public class ArchiveDirectory : VolumeDirectory
     {
+        private static readonly SuffixMap suffixes;
+
+        static ArchiveDirectory()
+        {
+            suffixes = VolumeDirectorySuffixes<ArchiveDirectory>();
+        }
+
         private Archive archive;
         private string archivePath;
 
-        public ArchiveDirectory(Archive archive, VolumePath path) : base(archive, path)
+        public ArchiveDirectory(Archive archive, VolumePath path) : base(archive, path, suffixes)
         {
             this.archive = archive;
             this.archivePath = archive.GetArchivePath(path);

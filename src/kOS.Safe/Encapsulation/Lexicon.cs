@@ -13,9 +13,9 @@ namespace kOS.Safe.Encapsulation
     [kOS.Safe.Utilities.KOSNomenclature("Lex", CSharpToKOS = false) ]
     public class Lexicon : SerializableStructure, IDictionary<Structure, Structure>, IIndexable
     {
-        public class LexiconComparer<TI> : IEqualityComparer<TI>
+        public class LexiconComparer : IEqualityComparer<Structure>
         {
-            public bool Equals(TI x, TI y)
+            public bool Equals(Structure x, Structure y)
             {
                 if (x == null || y == null)
                 {
@@ -27,7 +27,7 @@ namespace kOS.Safe.Encapsulation
                     return false;
                 }
 
-                if ((x is string || x is StringValue) && (y is string || y is StringValue))
+                if ((x is StringValue) && (y is StringValue))
                 {
                     var compare = string.Compare(x.ToString(), y.ToString(), StringComparison.InvariantCultureIgnoreCase);
                     return compare == 0;
@@ -36,9 +36,9 @@ namespace kOS.Safe.Encapsulation
                 return x.Equals(y);
             }
 
-            public int GetHashCode(TI obj)
+            public int GetHashCode(Structure obj)
             {
-                if (obj is string || obj is StringValue)
+                if (obj is StringValue)
                 {
                     return obj.ToString().ToLower().GetHashCode();
                 }
@@ -46,14 +46,39 @@ namespace kOS.Safe.Encapsulation
             }
         }
 
+        private static readonly SuffixMap suffixes;
+
+        static Lexicon()
+        {
+            suffixes = StructureSuffixes<Lexicon>();
+
+            suffixes.AddSuffix("CLEAR", new NoArgsVoidSuffix<Lexicon>((lexicon) => lexicon.Clear, "Removes all items from Lexicon"));
+            suffixes.AddSuffix("KEYS", new Suffix<Lexicon, ListValue>((lexicon) => lexicon.GetKeys, "Returns the lexicon keys"));
+            suffixes.AddSuffix("HASKEY", new OneArgsSuffix<Lexicon, BooleanValue, Structure>((lexicon) => lexicon.HasKey, "Returns true if a key is in the Lexicon"));
+            suffixes.AddSuffix("HASVALUE", new OneArgsSuffix<Lexicon, BooleanValue, Structure>((lexicon) => lexicon.HasValue, "Returns true if value is in the Lexicon"));
+            suffixes.AddSuffix("VALUES", new Suffix<Lexicon, ListValue>((lexicon) => lexicon.GetValues, "Returns the lexicon values"));
+            suffixes.AddSuffix("COPY", new NoArgsSuffix<Lexicon, Lexicon>((lexicon) => lexicon.Copy, "Returns a copy of Lexicon"));
+            suffixes.AddSuffix("LENGTH", new NoArgsSuffix<Lexicon, ScalarValue>((lexicon) => () => lexicon.internalDictionary.Count, "Returns the number of elements in the collection"));
+            suffixes.AddSuffix("REMOVE", new OneArgsSuffix<Lexicon, BooleanValue, Structure>((lexicon) => (item) => lexicon.Remove(item), "Removes the value at the given key"));
+            suffixes.AddSuffix("ADD", new TwoArgsVoidSuffix<Lexicon, Structure, Structure>((lexicon) => lexicon.Add, "Adds a new item to the lexicon, will error if the key already exists"));
+            suffixes.AddSuffix("DUMP", new NoArgsSuffix<Lexicon, StringValue>((lexicon) => () => lexicon.ToString(), "Serializes the collection to a string for printing"));
+            suffixes.AddSuffix(
+                new[] { "CASESENSITIVE", "CASE" },
+                new SetSuffix<Lexicon, BooleanValue>(
+                    (lexicon) => () => lexicon.caseSensitive,
+                    (lexicon) => lexicon.SetCaseSensitivity,
+                    "Lets you get/set the case sensitivity on the collection, changing sensitivity will clear the collection"
+                )
+            );
+        }
+
         private IDictionary<Structure, Structure> internalDictionary;
         private bool caseSensitive;
 
-        public Lexicon()
+        public Lexicon() : base(suffixes)
         {
-            internalDictionary = new Dictionary<Structure, Structure>(new LexiconComparer<Structure>());
+            internalDictionary = new Dictionary<Structure, Structure>(new LexiconComparer());
             caseSensitive = false;
-            InitalizeSuffixes();
         }
 
         public Lexicon(IEnumerable<Structure> values) : this()
@@ -86,21 +111,6 @@ namespace kOS.Safe.Encapsulation
 
         }
 
-        private void InitalizeSuffixes()
-        {
-            AddSuffix("CLEAR", new NoArgsVoidSuffix(Clear, "Removes all items from Lexicon"));
-            AddSuffix("KEYS", new Suffix<ListValue<Structure>>(GetKeys, "Returns the lexicon keys"));
-            AddSuffix("HASKEY", new OneArgsSuffix<BooleanValue, Structure>(HasKey, "Returns true if a key is in the Lexicon"));
-            AddSuffix("HASVALUE", new OneArgsSuffix<BooleanValue, Structure>(HasValue, "Returns true if value is in the Lexicon"));
-            AddSuffix("VALUES", new Suffix<ListValue<Structure>>(GetValues, "Returns the lexicon values"));
-            AddSuffix("COPY", new NoArgsSuffix<Lexicon>(() => new Lexicon(this), "Returns a copy of Lexicon"));
-            AddSuffix("LENGTH", new NoArgsSuffix<ScalarValue>(() => internalDictionary.Count, "Returns the number of elements in the collection"));
-            AddSuffix("REMOVE", new OneArgsSuffix<BooleanValue, Structure>(one => Remove(one), "Removes the value at the given key"));
-            AddSuffix("ADD", new TwoArgsSuffix<Structure, Structure>(Add, "Adds a new item to the lexicon, will error if the key already exists"));
-            AddSuffix("DUMP", new NoArgsSuffix<StringValue>(() => ToString(), "Serializes the collection to a string for printing"));
-            AddSuffix(new[] { "CASESENSITIVE", "CASE" }, new SetSuffix<BooleanValue>(() => caseSensitive, SetCaseSensitivity, "Lets you get/set the case sensitivity on the collection, changing sensitivity will clear the collection"));
-        }
-
         private void SetCaseSensitivity(BooleanValue value)
         {
             bool newCase = value.Value;
@@ -112,7 +122,7 @@ namespace kOS.Safe.Encapsulation
 
             internalDictionary = newCase ?
                 new Dictionary<Structure, Structure>() :
-            new Dictionary<Structure, Structure>(new LexiconComparer<Structure>());
+            new Dictionary<Structure, Structure>(new LexiconComparer());
         }
 
         private BooleanValue HasValue(Structure value)
@@ -125,12 +135,12 @@ namespace kOS.Safe.Encapsulation
             return internalDictionary.ContainsKey(key);
         }
 
-        public ListValue<Structure> GetValues()
+        public ListValue GetValues()
         {
             return ListValue.CreateList(Values);
         }
 
-        public ListValue<Structure> GetKeys()
+        public ListValue GetKeys()
         {
             return ListValue.CreateList(Keys);
         }
@@ -162,6 +172,11 @@ namespace kOS.Safe.Encapsulation
         public bool Contains(KeyValuePair<Structure, Structure> item)
         {
             return internalDictionary.Contains(item);
+        }
+
+        public Lexicon Copy()
+        {
+            return new Lexicon(this);
         }
 
         public void CopyTo(KeyValuePair<Structure, Structure>[] array, int arrayIndex)

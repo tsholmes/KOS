@@ -1,17 +1,25 @@
 ﻿using System;
 using System.IO;
+using kOS.Safe.Encapsulation;
 
 namespace kOS.Safe.Persistence
 {
     [kOS.Safe.Utilities.KOSNomenclature("VolumeFile", KOSToCSharp = false)]
     public class ArchiveFile : VolumeFile
     {
+        private static readonly SuffixMap suffixes;
+
+        static ArchiveFile()
+        {
+            suffixes = VolumeFileSuffixes<ArchiveFile>();
+        }
+
         private readonly FileInfo fileInfo;
 
         public override int Size { get { fileInfo.Refresh(); return (int)fileInfo.Length; } }
 
         public ArchiveFile(Archive archive, FileInfo fileInfo, VolumePath path)
-            : base(archive, path)
+            : base(archive, path, suffixes)
         {
             this.fileInfo = fileInfo;
         }

@@ -1,24 +1,14 @@
 namespace kOS.Safe.Encapsulation.Suffixes
 {
-    public class NoArgsSuffix<TReturn> : SuffixBase where TReturn : Structure
+    public class NoArgsSuffix<T, TReturn> : SuffixBase<T, NoArgsSuffix<T,TReturn>.Del> where T : Structure where TReturn : Structure
     {
-        private readonly Del<TReturn> del;
+        public delegate TReturn Del();
 
-        public delegate TInnerReturn Del<out TInnerReturn>() where TInnerReturn : Structure;
+        public NoArgsSuffix(GetDel get, string description = ""):base(get, description) {}
 
-        public NoArgsSuffix(Del<TReturn> del, string description = ""):base(description)
+        protected override object Call(Del del, object [] args)
         {
-            this.del = del;
-        }
-
-        public override ISuffixResult Get()
-        {
-            return new DelegateSuffixResult(del, call);
-        }
-
-        private object call(object[] args)
-        {
-            return (TReturn)del();
+            return del();
         }
     }
 

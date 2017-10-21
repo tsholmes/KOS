@@ -6,26 +6,45 @@ using kOS.Safe.Serialization;
 namespace kOS.Safe.Encapsulation
 {
     [kOS.Safe.Utilities.KOSNomenclature("Queue")]
-    public class QueueValue<T> : EnumerableValue<T, Queue<T>>
-        where T : Structure
+    public class QueueValue : EnumerableValue<Queue<Structure>>
     {
-        public QueueValue() : this(new Queue<T>())
+        private static readonly SuffixMap suffixes;
+
+        static QueueValue()
+        {
+            suffixes = EnumerableSuffixes<QueueValue>();
+
+            suffixes.AddSuffix("CLEAR", new NoArgsVoidSuffix<QueueValue>((queue) => queue.InnerEnumerable.Clear));
+
+            suffixes.AddSuffix("COPY", new NoArgsSuffix<QueueValue, QueueValue>((queue) => queue.Copy));
+
+            suffixes.AddSuffix("PUSH", new OneArgsVoidSuffix<QueueValue, Structure>((queue) => queue.Push));
+            suffixes.AddSuffix("POP", new NoArgsSuffix<QueueValue, Structure>((queue) => queue.Pop));
+            suffixes.AddSuffix("PEEK", new NoArgsSuffix<QueueValue, Structure>((queue) => queue.InnerEnumerable.Peek));
+            suffixes.AddSuffix("CLEAR", new NoArgsVoidSuffix<QueueValue>((queue) => queue.InnerEnumerable.Clear));
+        }
+        
+        public QueueValue() : this(new Queue<Structure>())
         {
         }
 
-        public QueueValue(IEnumerable<T> queueValue) : base("QUEUE", new Queue<T>(queueValue))
+        public QueueValue(IEnumerable<Structure> queueValue) : base("QUEUE", new Queue<Structure>(queueValue), suffixes)
         {
-            QueueInitializeSuffixes();
         }
 
-        public T Pop()
+        public Structure Pop()
         {
             return InnerEnumerable.Dequeue();
         }
 
-        public void Push(T val)
+        public void Push(Structure val)
         {
             InnerEnumerable.Enqueue(val);
+        }
+
+        public QueueValue Copy()
+        {
+            return new QueueValue(this);
         }
 
         public override void LoadDump(Dump dump)
@@ -36,48 +55,13 @@ namespace kOS.Safe.Encapsulation
 
             foreach (object item in values)
             {
-                InnerEnumerable.Enqueue((T)FromPrimitive(item));
+                InnerEnumerable.Enqueue((Structure)FromPrimitive(item));
             }
         }
 
-        private void QueueInitializeSuffixes()
+        public static QueueValue CreateQueue<T>(IEnumerable<T> list)
         {
-            AddSuffix("COPY",     new NoArgsSuffix<QueueValue<T>>       (() => new QueueValue<T>(this)));
-
-            AddSuffix("PUSH",     new OneArgsSuffix<T>                  (toPush => InnerEnumerable.Enqueue(toPush)));
-            AddSuffix("POP",      new NoArgsSuffix<T>                   (() => InnerEnumerable.Dequeue()));
-            AddSuffix("PEEK",     new NoArgsSuffix<T>                   (() => InnerEnumerable.Peek()));
-            AddSuffix("CLEAR",    new NoArgsVoidSuffix                  (() => InnerEnumerable.Clear()));
-        }
-
-        public static QueueValue<T> CreateQueue<TU>(IEnumerable<TU> list)
-        {
-            return new QueueValue<T>(list.Cast<T>());
-        }
-    }
-
-    [kOS.Safe.Utilities.KOSNomenclature("Queue", KOSToCSharp = false)] // one-way because the generic templated QueueValue<T> is the canonical one.  
-    public class QueueValue : QueueValue<Structure>
-    {
-        public QueueValue()
-        {
-            InitializeSuffixes();
-        }
-
-        public QueueValue(IEnumerable<Structure> toCopy)
-            : base(toCopy)
-        {
-            InitializeSuffixes();
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("COPY", new NoArgsSuffix<QueueValue>(() => new QueueValue(this)));
-        }
-
-        public new static QueueValue CreateQueue<T>(IEnumerable<T> toCopy)
-        {
-            return new QueueValue(toCopy.Select(x => FromPrimitiveWithAssert(x)));
+            return new QueueValue(list.Cast<Structure>());
         }
     }
 }

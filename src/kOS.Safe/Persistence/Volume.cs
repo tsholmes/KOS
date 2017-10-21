@@ -9,6 +9,27 @@ namespace kOS.Safe.Persistence
     [kOS.Safe.Utilities.KOSNomenclature("Volume")]
     public abstract class Volume : Structure
     {
+        protected static SuffixMap VolumeSuffixes<T>() where T : Volume
+        {
+            SuffixMap suffixes = StructureSuffixes<T>();
+
+            suffixes.AddSuffix("FREESPACE" , new Suffix<T, ScalarValue>((volume) => () => volume.FreeSpace));
+            suffixes.AddSuffix("CAPACITY" , new Suffix<T, ScalarValue>((volume) => () => volume.Capacity));
+            suffixes.AddSuffix("NAME" , new SetSuffix<T, StringValue>((volume) => () => volume.Name, (volume) => (newName) => volume.Name = newName));
+            suffixes.AddSuffix("RENAMEABLE" , new Suffix<T, BooleanValue>((volume) => () => volume.Renameable));
+            suffixes.AddSuffix("POWERREQUIREMENT" , new Suffix<T, ScalarValue>((volume) => () => volume.RequiredPower()));
+
+            suffixes.AddSuffix("ROOT" , new Suffix<T, VolumeDirectory>((volume) => () => volume.Root));
+            suffixes.AddSuffix("EXISTS" , new OneArgsSuffix<T, BooleanValue, StringValue>((volume) => (path) => volume.Exists(path)));
+            suffixes.AddSuffix("FILES" , new Suffix<T, Lexicon>((volume) => volume.ListAsLexicon));
+            suffixes.AddSuffix("CREATE" , new OneArgsSuffix<T, VolumeFile, StringValue>((volume) => (path) => volume.CreateFile(path)));
+            suffixes.AddSuffix("CREATEDIR" , new OneArgsSuffix<T, VolumeDirectory, StringValue>((volume) => (path) => volume.CreateDirectory(path)));
+            suffixes.AddSuffix("OPEN" , new OneArgsSuffix<T, Structure, StringValue>((volume) => (path) => volume.OpenSafe(path)));
+            suffixes.AddSuffix("DELETE" , new OneArgsSuffix<T, BooleanValue, StringValue>((volume) => (path) => volume.Delete(path)));
+
+            return suffixes;
+        }
+
         public const string TEXT_EXTENSION = "txt";
         public const string KERBOSCRIPT_EXTENSION = "ks";
         public const string KOS_MACHINELANGUAGE_EXTENSION = "ksm";
@@ -54,12 +75,11 @@ namespace kOS.Safe.Persistence
             }
         }
 
-        protected Volume()
+        protected Volume(SuffixMap suffixes) : base(suffixes)
         {
             Renameable = true;
             Capacity = -1;
             Name = "";
-            InitializeVolumeSuffixes();
         }
 
         protected void InitializeName(string name)
@@ -185,23 +205,6 @@ namespace kOS.Safe.Persistence
         public override string ToString()
         {
             return "Volume(" + Name + ", " + Capacity + ")";
-        }
-
-        private void InitializeVolumeSuffixes()
-        {
-            AddSuffix("FREESPACE" , new Suffix<ScalarValue>(() => FreeSpace));
-            AddSuffix("CAPACITY" , new Suffix<ScalarValue>(() => Capacity));
-            AddSuffix("NAME" , new SetSuffix<StringValue>(() => Name, (newName) => Name = newName));
-            AddSuffix("RENAMEABLE" , new Suffix<BooleanValue>(() => Renameable));
-            AddSuffix("POWERREQUIREMENT" , new Suffix<ScalarValue>(() => RequiredPower()));
-
-            AddSuffix("ROOT" , new Suffix<VolumeDirectory>(() => Root));
-            AddSuffix("EXISTS" , new OneArgsSuffix<BooleanValue, StringValue>(path => Exists(path)));
-            AddSuffix("FILES" , new Suffix<Lexicon>(ListAsLexicon));
-            AddSuffix("CREATE" , new OneArgsSuffix<VolumeFile, StringValue>(path => CreateFile(path)));
-            AddSuffix("CREATEDIR" , new OneArgsSuffix<VolumeDirectory, StringValue>(path => CreateDirectory(path)));
-            AddSuffix("OPEN" , new OneArgsSuffix<Structure, StringValue>(path => OpenSafe(path)));
-            AddSuffix("DELETE" , new OneArgsSuffix<BooleanValue, StringValue>(path => Delete(path)));
         }
     }
 }

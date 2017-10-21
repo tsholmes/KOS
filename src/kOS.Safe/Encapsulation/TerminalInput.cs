@@ -11,6 +11,25 @@ namespace kOS.Safe.Encapsulation
     [kOS.Safe.Utilities.KOSNomenclature("TerminalInput")]
     public class TerminalInput : Structure
     {
+        private static readonly SuffixMap suffixes;
+
+        static TerminalInput()
+        {
+            suffixes = StructureSuffixes<TerminalInput>();
+
+            suffixes.AddSuffix("GETCHAR", new Suffix<TerminalInput, StringValue>((input) => input.GetChar));
+            suffixes.AddSuffix("HASCHAR", new Suffix<TerminalInput, BooleanValue>((input) => input.HasChar));
+            suffixes.AddSuffix("CLEAR", new NoArgsVoidSuffix<TerminalInput>((input) => input.Clear));
+
+            // Aliases for special characters:
+            foreach (UnicodeCommand code in codesToExpose)
+            {
+                suffixes.AddSuffix(code.ToString(), new Suffix<TerminalInput, StringValue>((input) => () => new StringValue((char)code)));
+            }
+            suffixes.AddSuffix("BACKSPACE", new Suffix<TerminalInput, StringValue>((input) => () => new StringValue((char)0x008)));
+            suffixes.AddSuffix(new[] { "RETURN", "ENTER" }, new Suffix<TerminalInput, StringValue>((input) => () => new StringValue((char)0x00D)));
+        }
+
         private SafeSharedObjects shared;
 
         /// <summary>
@@ -31,25 +50,9 @@ namespace kOS.Safe.Encapsulation
                 UnicodeCommand.DELETERIGHT
             };
 
-        public TerminalInput(SafeSharedObjects shared)
+        public TerminalInput(SafeSharedObjects shared) : base(suffixes)
         {
             this.shared = shared;
-            InitializeSuffixes();
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("GETCHAR", new Suffix<StringValue>(GetChar));
-            AddSuffix("HASCHAR", new Suffix<BooleanValue>(HasChar));
-            AddSuffix("CLEAR", new NoArgsVoidSuffix(Clear));
-
-            // Aliases for special characters:
-            foreach (UnicodeCommand code in codesToExpose)
-            {
-                AddSuffix(code.ToString(), new Suffix<StringValue>(() => new StringValue((char)code)));
-            }
-            AddSuffix("BACKSPACE", new Suffix<StringValue>(() => new StringValue((char)0x008)));
-            AddSuffix(new[] { "RETURN", "ENTER" }, new Suffix<StringValue>(() => new StringValue((char)0x00D)));
         }
 
         /// <summary>

@@ -1,17 +1,14 @@
 namespace kOS.Safe.Encapsulation.Suffixes
 {
-    public class Suffix<TReturn> : SuffixBase where TReturn : Structure
+    public class Suffix<T, TReturn> : SuffixBase<T, SuffixGetDlg<TReturn>> where T : Structure where TReturn : Structure
     {
-        private readonly SuffixGetDlg<TReturn> getter;
-
-        public Suffix(SuffixGetDlg<TReturn> getter, string description = ""):base(description)
+        public Suffix(GetDel get, string description = ""):base(get, description)
         {
-            this.getter = getter;
         }
 
-        public override ISuffixResult Get()
+        protected override object Call(SuffixGetDlg<TReturn> del, object[] args)
         {
-            return new SuffixResult(getter.Invoke());
+            return del();
         }
     }
 }

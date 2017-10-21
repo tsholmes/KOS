@@ -1,14 +1,23 @@
-﻿namespace kOS.Safe.Persistence
+﻿using kOS.Safe.Encapsulation;
+
+namespace kOS.Safe.Persistence
 {
     [kOS.Safe.Utilities.KOSNomenclature("VolumeFile", KOSToCSharp = false)]
     public class HarddiskFile : VolumeFile
     {
+        private static readonly SuffixMap suffixes;
+
+        static HarddiskFile()
+        {
+            suffixes = VolumeFileSuffixes<HarddiskFile>();
+        }
+
         private readonly HarddiskDirectory hardiskDirectory;
 
         public override int Size { get { return ReadAll().Size; } }
 
         public HarddiskFile(HarddiskDirectory harddiskDirectory, string name) : base(harddiskDirectory.Volume as Harddisk,
-            VolumePath.FromString(name, harddiskDirectory.Path))
+            VolumePath.FromString(name, harddiskDirectory.Path), suffixes)
         {
             this.hardiskDirectory = harddiskDirectory;
         }

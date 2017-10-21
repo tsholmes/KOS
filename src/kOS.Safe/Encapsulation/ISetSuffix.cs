@@ -2,6 +2,6 @@
 {
     public interface ISetSuffix : ISuffix
     {
-        void Set(object value);
+        void Set(Structure structure, object value);
     }
 }

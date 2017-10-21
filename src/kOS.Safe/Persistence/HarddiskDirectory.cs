@@ -11,9 +11,16 @@ namespace kOS.Safe.Persistence
     [kOS.Safe.Utilities.KOSNomenclature("VolumeFile", KOSToCSharp = false)]
     public class HarddiskDirectory : VolumeDirectory, IEnumerable<VolumeItem>
     {
+        private static readonly SuffixMap suffixes;
+
+        static HarddiskDirectory()
+        {
+            suffixes = VolumeDirectorySuffixes<HarddiskDirectory>();
+        }
+
         private Dictionary<string, Structure> items;
 
-        public HarddiskDirectory(Harddisk harddisk, VolumePath path) : base(harddisk, path)
+        public HarddiskDirectory(Harddisk harddisk, VolumePath path) : base(harddisk, path, suffixes)
         {
             items = new Dictionary<string, Structure>(StringComparer.InvariantCultureIgnoreCase);
         }

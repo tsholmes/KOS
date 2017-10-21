@@ -9,6 +9,18 @@ namespace kOS.Safe.Persistence
     [kOS.Safe.Utilities.KOSNomenclature("VolumeItem")]
     public abstract class VolumeItem : Structure
     {
+        protected static SuffixMap VolumeItemSuffixes<T>() where T : VolumeItem
+        {
+            SuffixMap suffixes = StructureSuffixes<T>();
+
+            suffixes.AddSuffix("NAME", new Suffix<T, StringValue>((vitem) => () => vitem.Name));
+            suffixes.AddSuffix("SIZE", new Suffix<T, ScalarIntValue>((vitem) => () => new ScalarIntValue(vitem.Size)));
+            suffixes.AddSuffix("EXTENSION", new Suffix<T, StringValue>((vitem) => () => vitem.Extension));
+            suffixes.AddSuffix("ISFILE", new Suffix<T, BooleanValue>((vitem) => () => vitem is VolumeFile));
+
+            return suffixes;
+        }
+
         public Volume Volume { get; set; }
         public VolumePath Path { get; set; }
 
@@ -28,28 +40,16 @@ namespace kOS.Safe.Persistence
             }
         }
 
-        public VolumeItem(Volume volume, VolumePath path)
+        protected VolumeItem(Volume volume, VolumePath path, SuffixMap suffixes) : base(suffixes)
         {
             Volume = volume;
             Path = path;
-
-            InitializeSuffixes();
         }
 
-        public VolumeItem(Volume volume, VolumePath parentPath, String name)
+        protected VolumeItem(Volume volume, VolumePath parentPath, String name, SuffixMap suffixes) : base(suffixes)
         {
             Volume = volume;
             Path = VolumePath.FromString(name, parentPath);
-
-            InitializeSuffixes();
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("NAME", new Suffix<StringValue>(() => Name));
-            AddSuffix("SIZE", new Suffix<ScalarIntValue>(() => new ScalarIntValue(Size)));
-            AddSuffix("EXTENSION", new Suffix<StringValue>(() => Extension));
-            AddSuffix("ISFILE", new Suffix<BooleanValue>(() => this is VolumeFile));
         }
 
         public override string ToString()

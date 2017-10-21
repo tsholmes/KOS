@@ -13,190 +13,48 @@ namespace kOS.Safe.Encapsulation
     [KOSNomenclature("Structure")]
     public abstract class Structure : ISuffixed 
     {
-        private static readonly IDictionary<Type,IDictionary<string, ISuffix>> globalSuffixes;
-        private readonly IDictionary<string, ISuffix> instanceSuffixes;
-        private static readonly object globalSuffixLock = new object();
+        private SuffixMap instanceSuffixes;
 
-        private bool needToInitializeSuffixes = true;
-        private List<Action> initializeSuffixCallbacks = new List<Action>();
-
-        static Structure()
+        protected Structure(SuffixMap instanceSuffixes)
         {
-            globalSuffixes = new Dictionary<Type, IDictionary<string, ISuffix>>();
-            
-        }
-
-        protected Structure()
-        {
-            instanceSuffixes = new Dictionary<string, ISuffix>(StringComparer.OrdinalIgnoreCase);
-            RegisterInitializer(InitializeInstanceSuffixes);
-        }
-
-        protected void RegisterInitializer(Action callback)
-        {
-            if (!initializeSuffixCallbacks.Contains(callback))
-            {
-                initializeSuffixCallbacks.Add(callback);
-            }
-        }
-
-        private void callInitializeSuffixes()
-        {
-            if (needToInitializeSuffixes)
-            {
-                foreach (var callback in initializeSuffixCallbacks)
-                {
-                    callback.Invoke();
-                }
-                needToInitializeSuffixes = false;
-            }
+            this.instanceSuffixes = instanceSuffixes;
         }
         
         public string KOSName { get { return KOSNomenclature.GetKOSName(GetType()); } }
 
-
-        private void InitializeInstanceSuffixes()
+        protected static SuffixMap StructureSuffixes<T>() where T : Structure
         {
-              // Need to choose what sort of naming scheme to return before
-              // enabling this one:
-              //     AddSuffix("TYPENAME",   new NoArgsSuffix<StringValue>(() => GetType().ToString()));
+            SuffixMap suffixes = new SuffixMap();
+            
+            suffixes.AddSuffix("TOSTRING", new NoArgsSuffix<T, StringValue>((structure) => () => structure.ToString()));
+            suffixes.AddSuffix("HASSUFFIX", new OneArgsSuffix<T, BooleanValue, StringValue>((structure) => structure.HasSuffix));
+            suffixes.AddSuffix("SUFFIXNAMES", new NoArgsSuffix<T, ListValue>((structure) => structure.GetSuffixNames));
+            suffixes.AddSuffix("ISSERIALIZABLE", new NoArgsSuffix<T, BooleanValue>((structure) => () => structure is SerializableStructure));
+            suffixes.AddSuffix("TYPENAME", new NoArgsSuffix<T, StringValue>((structure) => () => new StringValue(structure.KOSName)));
+            suffixes.AddSuffix("ISTYPE", new OneArgsSuffix<T, BooleanValue,StringValue>((structure) => structure.GetKOSIsType));
+            suffixes.AddSuffix("INHERITANCE", new NoArgsSuffix<T, StringValue>((structure) => structure.GetKOSInheritance));
 
-              AddSuffix("TOSTRING",       new NoArgsSuffix<StringValue>(() => ToString()));
-              AddSuffix("HASSUFFIX",      new OneArgsSuffix<BooleanValue, StringValue>(HasSuffix));
-              AddSuffix("SUFFIXNAMES",    new NoArgsSuffix<ListValue<StringValue>>(GetSuffixNames));
-              AddSuffix("ISSERIALIZABLE", new NoArgsSuffix<BooleanValue>(() => this is SerializableStructure));
-              AddSuffix("TYPENAME",       new NoArgsSuffix<StringValue>(() => new StringValue(KOSName)));
-              AddSuffix("ISTYPE",         new OneArgsSuffix<BooleanValue,StringValue>(GetKOSIsType));
-              AddSuffix("INHERITANCE",    new NoArgsSuffix<StringValue>(GetKOSInheritance));
-        }
-
-        protected void AddSuffix(string suffixName, ISuffix suffixToAdd)
-        {
-            AddSuffix(new[]{suffixName}, suffixToAdd);
-        }
-
-        protected void AddSuffix(IEnumerable<string> suffixNames, ISuffix suffixToAdd)
-        {
-            foreach (var suffixName in suffixNames)
-            {
-                if (instanceSuffixes.ContainsKey(suffixName))
-                {
-                    instanceSuffixes[suffixName] = suffixToAdd;
-                }
-                else
-                {
-                    instanceSuffixes.Add(suffixName, suffixToAdd);
-                }
-            }
-        }
-
-        protected static void AddGlobalSuffix<T>(string suffixName, ISuffix suffixToAdd)
-        {
-            AddGlobalSuffix<T>(new[]{suffixName}, suffixToAdd);
-        }
-
-        protected static void AddGlobalSuffix<T>(IEnumerable<string> suffixNames, ISuffix suffixToAdd)
-        {
-            var type = typeof (T);
-            var typeSuffixes = GetStaticSuffixesForType(type);
-
-            foreach (var suffixName in suffixNames)
-            {
-                if (typeSuffixes.ContainsKey(suffixName))
-                {
-                    typeSuffixes[suffixName] = suffixToAdd;
-                }
-                else
-                {
-                    typeSuffixes.Add(suffixName, suffixToAdd);
-                }
-            }
-            lock (globalSuffixLock)
-            {
-                globalSuffixes[type] = typeSuffixes;
-            }
-        }
-
-        private static IDictionary<string, ISuffix> GetStaticSuffixesForType(Type currentType)
-        {
-            lock (globalSuffixLock)
-            {
-                IDictionary<string, ISuffix> typeSuffixes;
-                if (globalSuffixes.TryGetValue(currentType, out typeSuffixes))
-                {
-                    return typeSuffixes;
-                }
-                return new Dictionary<string, ISuffix>(StringComparer.OrdinalIgnoreCase);
-            }
+            return suffixes;
         }
 
         public virtual bool SetSuffix(string suffixName, object value)
         {
-            callInitializeSuffixes();
-            var suffixes = GetStaticSuffixesForType(GetType());
-
-            if (!ProcessSetSuffix(suffixes, suffixName, value))
-            {
-                return ProcessSetSuffix(instanceSuffixes, suffixName, value);
-            }
-            return false;
-        }
-
-        private bool ProcessSetSuffix(IDictionary<string, ISuffix> suffixes, string suffixName, object value)
-        {
-            ISuffix suffix;
-            if (suffixes.TryGetValue(suffixName, out suffix))
-            {
-                var settable = suffix as ISetSuffix;
-                if (settable != null)
-                {
-                    settable.Set(value);
-                    return true;
-                }
-                throw new KOSSuffixUseException("set", suffixName, this);
-            }
-            return false;
+            return instanceSuffixes.SetSuffix(suffixName, this, value);
         }
 
         public virtual ISuffixResult GetSuffix(string suffixName)
         {
-            callInitializeSuffixes();
-            ISuffix suffix;
-            if (instanceSuffixes.TryGetValue(suffixName, out suffix))
-            {
-                return suffix.Get();
-            }
-
-            var suffixes = GetStaticSuffixesForType(GetType());
-
-            if (!suffixes.TryGetValue(suffixName, out suffix))
-            {
-                throw new KOSSuffixUseException("get",suffixName,this);
-            }
-            return suffix.Get();
+            return instanceSuffixes.GetSuffix(suffixName, this);
         }
         
         public virtual BooleanValue HasSuffix(StringValue suffixName)
         {
-            callInitializeSuffixes();
-            if (instanceSuffixes.ContainsKey(suffixName.ToString()))
-                return true;
-            if (GetStaticSuffixesForType(GetType()).ContainsKey(suffixName.ToString()))
-                return true;
-            return false;
+            return instanceSuffixes.HasSuffix(suffixName);
         }
         
-        public virtual ListValue<StringValue> GetSuffixNames()
+        public virtual ListValue GetSuffixNames()
         {
-            callInitializeSuffixes();
-            List<StringValue> names = new List<StringValue>();            
-            
-            names.AddRange(instanceSuffixes.Keys.Select(item => (StringValue)item));
-            names.AddRange(GetStaticSuffixesForType(GetType()).Keys.Select(item => (StringValue)item));
-            
-            // Return the list alphabetized by suffix name.  The key lookups above, since they're coming
-            // from a hashed dictionary, won't be in any predictable ordering:
-            return new ListValue<StringValue>(names.OrderBy(item => item.ToString()));
+            return instanceSuffixes.GetSuffixNames();
         }
         
         public virtual BooleanValue GetKOSIsType(StringValue queryTypeName)

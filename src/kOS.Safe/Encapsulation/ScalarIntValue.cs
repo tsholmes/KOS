@@ -1,12 +1,25 @@
-﻿namespace kOS.Safe.Encapsulation
+﻿using System;
+
+namespace kOS.Safe.Encapsulation
 {
     [kOS.Safe.Utilities.KOSNomenclature("Scalar", KOSToCSharp = false)]
     public class ScalarIntValue : ScalarValue
     {
+        private static readonly SuffixMap suffixes;
+
+        static ScalarIntValue()
+        {
+            suffixes = ScalarSuffixes<ScalarIntValue>();
+
+            Zero = new ScalarIntValue(0);
+            One = new ScalarIntValue(1);
+            Two = new ScalarIntValue(2);
+        }
+
         // those are handy especially in tests
-        public static ScalarIntValue Zero = new ScalarIntValue(0);
-        public static ScalarIntValue One = new ScalarIntValue(1);
-        public static ScalarIntValue Two = new ScalarIntValue(2);
+        public static ScalarIntValue Zero;
+        public static ScalarIntValue One;
+        public static ScalarIntValue Two;
 
         public override bool IsDouble
         {
@@ -23,7 +36,7 @@
             get { return (int)Value != 0; }
         }
 
-        public ScalarIntValue(int value)
+        public ScalarIntValue(int value) : base(suffixes)
         {
             Value = value;
         }

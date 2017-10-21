@@ -8,8 +8,19 @@ using System.Collections.Generic;
 namespace kOS.Safe
 {
     [kOS.Safe.Utilities.KOSNomenclature("Range")]
-    public class RangeValue : EnumerableValue<ScalarIntValue, Range>
+    public class RangeValue : EnumerableValue<Range>
     {
+        private static readonly SuffixMap suffixes;
+
+        static RangeValue()
+        {
+            suffixes = EnumerableSuffixes<RangeValue>();
+
+            suffixes.AddSuffix("START", new NoArgsSuffix<RangeValue, ScalarValue>((range) => () => range.InnerEnumerable.Start));
+            suffixes.AddSuffix("STOP", new NoArgsSuffix<RangeValue, ScalarValue>((range) => () => range.InnerEnumerable.Stop));
+            suffixes.AddSuffix("STEP", new NoArgsSuffix<RangeValue, ScalarValue>((range) => () => range.InnerEnumerable.Step));
+        }
+
         private const string DumpStart = "start";
         private const string DumpStop = "stop";
         private const string DumpStep = "step";
@@ -35,21 +46,12 @@ namespace kOS.Safe
         }
 
         public RangeValue(int start, int stop, int step)
-            : base(Label, new Range(start, stop, step))
+            : base(Label, new Range(start, stop, step), suffixes)
         {
-            InitializeRangeSuffixes();
-
             if (step < 1)
             {
                 throw new KOSException("Step must be a positive integer");
             }
-        }
-
-        private void InitializeRangeSuffixes()
-        {
-            AddSuffix("START", new NoArgsSuffix<ScalarValue>(() => InnerEnumerable.Start));
-            AddSuffix("STOP", new NoArgsSuffix<ScalarValue>(() => InnerEnumerable.Stop));
-            AddSuffix("STEP", new NoArgsSuffix<ScalarValue>(() => InnerEnumerable.Step));
         }
 
         public override void LoadDump(Dump dump)
@@ -78,7 +80,7 @@ namespace kOS.Safe
         }
     }
 
-    public class Range : IEnumerable<ScalarIntValue>
+    public class Range : IEnumerable<Structure>
     {
         public int Start { get; set; }
         public int Stop { get; set; }
@@ -91,20 +93,20 @@ namespace kOS.Safe
             Step = step;
         }
 
-        IEnumerator<ScalarIntValue> IEnumerable<ScalarIntValue>.GetEnumerator()
+        IEnumerator<Structure> IEnumerable<Structure>.GetEnumerator()
         {
             if (Start < Stop)
             {
                 for (int i = Start; i < Stop; i += Step)
                 {
-                    yield return i;
+                    yield return (ScalarIntValue)i;
                 }
             }
             else
             {
                 for (int i = Start; i > Stop; i -= Step)
                 {
-                    yield return i;
+                    yield return (ScalarIntValue)i;
                 }
             }
         }

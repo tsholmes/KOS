@@ -8,30 +8,44 @@ using kOS.Safe.Serialization;
 namespace kOS.Safe.Encapsulation
 {
     [kOS.Safe.Utilities.KOSNomenclature("UniqueSet")]
-    public class UniqueSetValue<T> : CollectionValue<T, HashSet<T>>
-        where T : Structure
+    public class UniqueSetValue : CollectionValue<HashSet<Structure>>
     {
+        private static readonly SuffixMap suffixes;
+
+        static UniqueSetValue()
+        {
+            suffixes = CollectionSuffixes<UniqueSetValue>();
+
+            suffixes.AddSuffix("COPY", new NoArgsSuffix<UniqueSetValue, UniqueSetValue>((uniqueSet) => uniqueSet.Copy));
+            suffixes.AddSuffix("ADD", new OneArgsVoidSuffix<UniqueSetValue, Structure>((uniqueSet) => uniqueSet.Add));
+            suffixes.AddSuffix("REMOVE", new OneArgsSuffix<UniqueSetValue, BooleanValue, Structure>((uniqueSet) => (item) => uniqueSet.Remove(item)));
+        }
+
         public UniqueSetValue()
-            : this(new HashSet<T>())
+            : this(new HashSet<Structure>())
         {
         }
 
-        public UniqueSetValue(IEnumerable<T> setValue) : base("UNIQUESET", new HashSet<T>(setValue))
+        public UniqueSetValue(IEnumerable<Structure> setValue) : base("UNIQUESET", new HashSet<Structure>(setValue), suffixes)
         {
-            SetInitializeSuffixes();
         }
 
-        public void Add(T item)
+        public void Add(Structure item)
         {
             Collection.Add(item);
         }
 
-        public void CopyTo(T[] array, int arrayIndex)
+        public UniqueSetValue Copy()
+        {
+            return new UniqueSetValue(this);
+        }
+
+        public void CopyTo(Structure[] array, int arrayIndex)
         {
             Collection.CopyTo(array, arrayIndex);
         }
 
-        public bool Remove(T item)
+        public bool Remove(Structure item)
         {
             return Collection.Remove(item);
         }
@@ -49,35 +63,8 @@ namespace kOS.Safe.Encapsulation
 
             foreach (object item in values)
             {
-                Collection.Add((T)FromPrimitive(item));
+                Collection.Add((Structure)FromPrimitive(item));
             }
-        }
-
-        private void SetInitializeSuffixes()
-        {
-            AddSuffix("COPY",     new NoArgsSuffix<UniqueSetValue<T>>         (() => new UniqueSetValue<T>(this)));
-            AddSuffix("ADD",      new OneArgsSuffix<T>                      (toAdd => Collection.Add(toAdd)));
-            AddSuffix("REMOVE",   new OneArgsSuffix<BooleanValue, T>        (toRemove => Collection.Remove(toRemove)));
-       }
-    }
-
-    [kOS.Safe.Utilities.KOSNomenclature("UniqueSet", KOSToCSharp = false)] // one-way because the generic templated UniqueSetValue<T> is the canonical one.
-    public class UniqueSetValue : UniqueSetValue<Structure>
-    {
-        public UniqueSetValue()
-        {
-            InitializeSuffixes();
-        }
-
-        public UniqueSetValue(IEnumerable<Structure> toCopy)
-            : base(toCopy)
-        {
-            InitializeSuffixes();
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("COPY", new NoArgsSuffix<UniqueSetValue>(() => new UniqueSetValue(this)));
         }
     }
 }

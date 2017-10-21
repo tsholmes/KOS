@@ -1,4 +1,5 @@
 ﻿using kOS.Safe.Exceptions;
+using kOS.Safe.Encapsulation.Suffixes;
 using System;
 using System.Globalization;
 using System.Reflection;
@@ -9,6 +10,17 @@ namespace kOS.Safe.Encapsulation
     [kOS.Safe.Utilities.KOSNomenclature("Scalar")]
     abstract public class ScalarValue : PrimitiveStructure, IConvertible
     {
+        protected static SuffixMap ScalarSuffixes<T>() where T : ScalarValue
+        {
+            SuffixMap suffixes = StructureSuffixes<T>();
+
+            // TODO: Commented suffixes until the introduction of kOS types to the user.
+            //suffixes.AddSuffix("ISINTEGER", new NoArgsSuffix<T, BooleanValue>((scalar) => () => scalar.IsInt));
+            //suffixes.AddSuffix("ISVALID", new NoArgsSuffix<T, BooleanValue>((scalar) => () => scalar.IsValid));
+
+            return suffixes;
+        }
+
         // regular expression used to match white space surrounding the "e" in scientific notation
         private static readonly Regex trimPattern = new Regex(@"(?![\d\.])\s*[eE]\s*(?=[\d\+-])");
 
@@ -38,21 +50,13 @@ namespace kOS.Safe.Encapsulation
 
         public object Value { get; protected set; }
 
-        protected ScalarValue()
+        protected ScalarValue(SuffixMap suffixes) : base(suffixes)
         {
-            InitializeSuffixes();
         }
 
         public override object ToPrimitive ()
         {
             return Value;
-        }
-
-        public void InitializeSuffixes()
-        {
-            // TODO: Commented suffixes until the introduction of kOS types to the user.
-            //AddSuffix("ISINTEGER", new Suffix<BooleanValue>(() => IsInt));
-            //AddSuffix("ISVALID", new Suffix<BooleanValue>(() => IsValid));
         }
 
         public static ScalarValue Create(object value)

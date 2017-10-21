@@ -4,7 +4,7 @@ namespace kOS.Safe.Encapsulation
 {
     public interface ISuffix
     {
-        ISuffixResult Get();
+        ISuffixResult Get(Structure s);
         string Description { get; }
     }
 }

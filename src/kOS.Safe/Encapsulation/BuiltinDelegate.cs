@@ -10,15 +10,22 @@ namespace kOS.Safe.Encapsulation
     [kOS.Safe.Utilities.KOSNomenclature("BuiltinDelegate")]
     public class BuiltinDelegate : KOSDelegate
     {
+        private static readonly SuffixMap suffixes;
+
+        static BuiltinDelegate()
+        {
+            suffixes = DelegateSuffixes<BuiltinDelegate>();
+        }
+
         public string Name { get; set; }
         
         public BuiltinDelegate(ICpu cpu, string name) :
-            base(cpu)
+            base(cpu, suffixes)
         {
             Name = name;
         }
 
-        public BuiltinDelegate(BuiltinDelegate oldCopy) : base(oldCopy)
+        public BuiltinDelegate(BuiltinDelegate oldCopy) : base(oldCopy, suffixes)
         {
             Name = oldCopy.Name;
         }

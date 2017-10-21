@@ -14,6 +14,19 @@ namespace kOS.Safe.Persistence
     [kOS.Safe.Utilities.KOSNomenclature("FileContent")]
     public class FileContent : SerializableStructure, IEnumerable<string>
     {
+        private static readonly SuffixMap suffixes;
+
+        static FileContent()
+        {
+            suffixes = StructureSuffixes<FileContent>();
+
+            suffixes.AddSuffix("LENGTH", new Suffix<FileContent, ScalarIntValue>((content) => () => content.Size));
+            suffixes.AddSuffix("EMPTY", new Suffix<FileContent, BooleanValue>((content) => () => content.Size == 0));
+            suffixes.AddSuffix("TYPE", new Suffix<FileContent, StringValue>((content) => () => content.Category.ToString()));
+            suffixes.AddSuffix("STRING", new Suffix<FileContent, StringValue>((content) => () => content.String));
+            suffixes.AddSuffix("ITERATOR", new Suffix<FileContent, Enumerator>((content) => () => new Enumerator(content.GetEnumerator())));
+        }
+
         private static readonly Encoding fileEncoding = Encoding.UTF8;
         private const string DumpContent = "content";
         public const string NewLine = "\n";
@@ -24,11 +37,9 @@ namespace kOS.Safe.Persistence
         public int Size { get { return Bytes.Length; } }
         public FileCategory Category { get { return PersistenceUtilities.IdentifyCategory(Bytes); } }
 
-        public FileContent()
+        public FileContent() : base(suffixes)
         {
             Bytes = new byte[0];
-
-            InitializeSuffixes();
         }
 
         public FileContent(string content) : this()
@@ -44,15 +55,6 @@ namespace kOS.Safe.Persistence
         public FileContent(List<CodePart> parts) : this()
         {
             Bytes = CompiledObject.Pack(parts);
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("LENGTH", new Suffix<ScalarIntValue>(() => Size));
-            AddSuffix("EMPTY", new Suffix<BooleanValue>(() => Size == 0));
-            AddSuffix("TYPE", new Suffix<StringValue>(() => Category.ToString()));
-            AddSuffix("STRING", new Suffix<StringValue>(() => String));
-            AddSuffix("ITERATOR", new Suffix<Enumerator>(() => new Enumerator(GetEnumerator())));
         }
 
         public override Dump Dump()

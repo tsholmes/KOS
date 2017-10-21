@@ -6,29 +6,55 @@ using kOS.Safe.Serialization;
 namespace kOS.Safe.Encapsulation
 {
     [kOS.Safe.Utilities.KOSNomenclature("Stack")]
-    public class StackValue<T> : EnumerableValue<T, Stack<T>>
-        where T : Structure
+    public class StackValue : EnumerableValue<Stack<Structure>>
     {
-        public StackValue() : this(new Stack<T>())
+        private static readonly SuffixMap suffixes;
+
+        static StackValue()
+        {
+            suffixes = EnumerableSuffixes<StackValue>();
+
+            suffixes.AddSuffix("COPY",     new NoArgsSuffix<StackValue, StackValue>((stack) => stack.Copy));
+            suffixes.AddSuffix("PUSH",     new OneArgsVoidSuffix<StackValue, Structure>((stack) => stack.Push));
+            suffixes.AddSuffix("POP",      new NoArgsSuffix<StackValue, Structure>((stack) => stack.Pop));
+            suffixes.AddSuffix("PEEK",     new NoArgsSuffix<StackValue, Structure>((stack) => stack.Peek));
+            suffixes.AddSuffix("CLEAR",    new NoArgsVoidSuffix<StackValue>((stack) => stack.Clear));
+        }
+
+        public StackValue() : this(new Stack<Structure>())
         {
         }
 
-        public StackValue(IEnumerable<T> stackValue) : base("STACK", new Stack<T>(stackValue))
+        public StackValue(IEnumerable<Structure> stackValue) : base("STACK", new Stack<Structure>(stackValue), suffixes)
         {
-            StackInitializeSuffixes();
         }
 
-        public override IEnumerator<T> GetEnumerator()
+        public override IEnumerator<Structure> GetEnumerator()
         {
             return InnerEnumerable.Reverse().GetEnumerator();
         }
 
-        public T Pop()
+        public void Clear()
+        {
+            InnerEnumerable.Clear();
+        }
+
+        public StackValue Copy()
+        {
+            return new StackValue(this);
+        }
+
+        public Structure Pop()
         {
             return InnerEnumerable.Pop();
         }
 
-        public void Push(T val)
+        public Structure Peek()
+        {
+            return InnerEnumerable.Peek();
+        }
+
+        public void Push(Structure val)
         {
             InnerEnumerable.Push(val);
         }
@@ -43,47 +69,13 @@ namespace kOS.Safe.Encapsulation
 
             foreach (object item in values)
             {
-                InnerEnumerable.Push((T)Structure.FromPrimitive(item));
+                InnerEnumerable.Push((Structure)Structure.FromPrimitive(item));
             }
         }
 
-        private void StackInitializeSuffixes()
+        public static StackValue CreateStack<TU>(IEnumerable<TU> list)
         {
-            AddSuffix("COPY",     new NoArgsSuffix<StackValue<T>>       (() => new StackValue<T>(this)));
-            AddSuffix("PUSH",     new OneArgsSuffix<T>                  (toPush => InnerEnumerable.Push(toPush)));
-            AddSuffix("POP",      new NoArgsSuffix<T>                   (() => InnerEnumerable.Pop()));
-            AddSuffix("PEEK",     new NoArgsSuffix<T>                   (() => InnerEnumerable.Peek()));
-            AddSuffix("CLEAR",    new NoArgsVoidSuffix                  (() => InnerEnumerable.Clear()));
-        }
-
-        public static StackValue<T> CreateStack<TU>(IEnumerable<TU> list)
-        {
-            return new StackValue<T>(list.Cast<T>());
-        }
-    }
-
-    [kOS.Safe.Utilities.KOSNomenclature("Stack", KOSToCSharp = false)] // one-way because the generic templated StackValue<T> is the canonical one.  
-    public class StackValue : StackValue<Structure>
-    {
-        public StackValue()
-        {
-            InitializeSuffixes();
-        }
-
-        public StackValue(IEnumerable<Structure> toCopy)
-            : base(toCopy)
-        {
-            InitializeSuffixes();
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("COPY", new NoArgsSuffix<StackValue>(() => new StackValue(this)));
-        }
-
-        public new static StackValue CreateStack<T>(IEnumerable<T> toCopy)
-        {
-            return new StackValue(toCopy.Select(x => Structure.FromPrimitiveWithAssert(x)));
+            return new StackValue(list.Cast<Structure>());
         }
     }
 }

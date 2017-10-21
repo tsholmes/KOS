@@ -10,9 +10,18 @@ namespace kOS.Safe
     [kOS.Safe.Utilities.KOSNomenclature("VolumeDirectory")]
     public abstract class VolumeDirectory : VolumeItem, IEnumerable<VolumeItem>
     {
-        public VolumeDirectory(Volume volume, VolumePath path) : base(volume, path)
+        protected static SuffixMap VolumeDirectorySuffixes<T>() where T : VolumeDirectory
         {
-            InitializeSuffixes();
+            SuffixMap suffixes = VolumeItemSuffixes<T>();
+
+            suffixes.AddSuffix("ITERATOR", new NoArgsSuffix<T, Enumerator>((vdir) => () => new Enumerator(vdir.GetEnumerator())));
+            suffixes.AddSuffix("LIST", new Suffix<T, Lexicon>((vdir) => vdir.ListAsLexicon));
+
+            return suffixes;
+        }
+
+        protected VolumeDirectory(Volume volume, VolumePath path, SuffixMap suffixes) : base(volume, path, suffixes)
+        {
         }
 
         public Lexicon ListAsLexicon()
@@ -37,12 +46,6 @@ namespace kOS.Safe
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("ITERATOR", new NoArgsSuffix<Enumerator>(() => new Enumerator(GetEnumerator())));
-            AddSuffix("LIST", new Suffix<Lexicon>(ListAsLexicon));
         }
     }
 }

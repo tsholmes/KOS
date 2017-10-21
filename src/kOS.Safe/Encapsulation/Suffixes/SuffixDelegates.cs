@@ -4,4 +4,5 @@ namespace kOS.Safe.Encapsulation.Suffixes
     public delegate bool StaticSuffixSetDlg<in TParam>(TParam value);
     public delegate TReturn SuffixGetDlg<out TReturn>();
     public delegate void SuffixSetDlg<in TValue>(TValue value);
+    public delegate object SuffixCallDel(object[] args);
 }

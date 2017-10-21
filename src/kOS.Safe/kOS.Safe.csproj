@@ -123,7 +123,6 @@
     <Compile Include="Encapsulation\Suffixes\DelegateSuffixResult.cs" />
     <Compile Include="Encapsulation\Suffixes\ISuffixResult.cs" />
     <Compile Include="Encapsulation\Suffixes\SuffixBase.cs" />
-    <Compile Include="Encapsulation\Suffixes\GlobalSuffix.cs" />
     <Compile Include="Encapsulation\Suffixes\NoArgsSuffix.cs" />
     <Compile Include="Encapsulation\Suffixes\NoArgsVoidSuffix.cs" />
     <Compile Include="Encapsulation\Suffixes\OneArgsSuffix.cs" />
@@ -330,6 +329,8 @@
     <Compile Include="Function\Persistence\FunctionMovePath.cs" />
     <Compile Include="Function\Persistence\FunctionDeletePath.cs" />
     <Compile Include="Function\Persistence\FunctionCreateDir.cs" />
+    <Compile Include="Encapsulation\ISuffixMap.cs" />
+    <Compile Include="Encapsulation\SuffixMap.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Compilation\CompiledObject-doc.md" />

@@ -7,6 +7,86 @@ namespace kOS.Safe.Encapsulation
     [Utilities.KOSNomenclature("Terminal")]
     public class TerminalStruct : Structure, IFixedUpdateObserver
     {
+        private static readonly SuffixMap suffixes;
+
+        static TerminalStruct()
+        {
+            suffixes = StructureSuffixes<TerminalStruct>();
+
+            // TODO: Uncomment the following if IsOpen gets implemented later:
+            // suffixes.AddSuffix("ISOPEN", new SetSuffix<TerminalStruct>BooleanValue>((terminal) => () => terminal.IsOpen, (terminal) => () => terminal.Isopen = value, "true=open, false=closed.  You can set it to open/close the window."));
+            suffixes.AddSuffix(
+                "HEIGHT",
+                new ClampSetSuffix<TerminalStruct, ScalarValue>(
+                    (terminal) => () => terminal.Shared.Screen.RowCount,
+                    (terminal) => (value) => terminal.Shared.Screen.SetSize(value, terminal.Shared.Screen.ColumnCount),
+                    MINROWS,
+                    MAXROWS,
+                    "Get or Set the number of rows on the screen.  Value is limited to the range [" + MINROWS + "," + MAXROWS + "]"
+                )
+            );
+            suffixes.AddSuffix(
+                "WIDTH",
+                new ClampSetSuffix<TerminalStruct, ScalarValue>(
+                    (terminal) => () => terminal.Shared.Screen.ColumnCount,
+                    (terminal) => (value) => terminal.Shared.Screen.SetSize(terminal.Shared.Screen.RowCount, value),
+                    MINCOLUMNS,
+                    MAXCOLUMNS,
+                    "Get or Set the number of columns on the screen.  Value is limited to the range [" + MINCOLUMNS + "," + MAXCOLUMNS + "]"
+                )
+            );
+            suffixes.AddSuffix(
+                "REVERSE",
+                new SetSuffix<TerminalStruct, BooleanValue>(
+                    (terminal) => () => terminal.Shared.Screen.ReverseScreen,
+                    (terminal) => (value) => terminal.Shared.Screen.ReverseScreen = value,
+                    "Get or set the value of whether or not the terminal is in reversed mode."
+                )
+            );
+            suffixes.AddSuffix(
+                "VISUALBEEP",
+                new SetSuffix<TerminalStruct, BooleanValue>(
+                    (terminal) => () => terminal.Shared.Screen.VisualBeep,
+                    (terminal) => (value) => terminal.Shared.Screen.VisualBeep = value,
+                    "Get or set the value of whether or not the terminal shows beeps silently with a visual flash."
+                )
+            );
+            suffixes.AddSuffix(
+                "BRIGHTNESS",
+                new ClampSetSuffix<TerminalStruct, ScalarValue>(
+                    (terminal) => () => terminal.Shared.Screen.Brightness,
+                    (terminal) => (value) => terminal.Shared.Screen.Brightness = (float)value,
+                    0f,
+                    1f,
+                    "Screen Brightness, between 0.0 and 1.0"
+                )
+            );
+            suffixes.AddSuffix(
+                "CHARWIDTH",
+                new ClampSetSuffix<TerminalStruct, ScalarValue>(
+                    (terminal) => () => terminal.Shared.Screen.CharacterPixelWidth,
+                    (terminal) => terminal.CannotSetWidth,
+                    MINCHARPIXELS,
+                    MAXCHARPIXELS,
+                    2,
+                    "Character width on in-game terminal screen in pixels"
+                )
+            );
+            suffixes.AddSuffix(
+                "CHARHEIGHT",
+                new ClampSetSuffix<TerminalStruct, ScalarValue>(
+                    (terminal) => () => terminal.Shared.Screen.CharacterPixelHeight,
+                    (terminal) => (value) => terminal.Shared.Screen.CharacterPixelHeight = (int)value,
+                    MINCHARPIXELS,
+                    MAXCHARPIXELS,
+                    2,
+                    "Character height on in-game terminal screen in pixels"
+                )
+            );
+            suffixes.AddSuffix("RESIZEWATCHERS", new NoArgsSuffix<TerminalStruct, UniqueSetValue>((terminal) => () => terminal.resizeWatchers));
+            suffixes.AddSuffix("INPUT", new Suffix<TerminalStruct, TerminalInput>((terminal) => terminal.GetTerminalInputInstance));
+        }
+
         private readonly SafeSharedObjects shared;
         private TerminalInput terminalInput = null;
 
@@ -29,19 +109,17 @@ namespace kOS.Safe.Encapsulation
         /// <summary>
         /// This is what we expose to the user script that the user can manipulate to their heart's content.
         /// </summary>
-        protected UniqueSetValue<UserDelegate> resizeWatchers;
+        protected UniqueSetValue resizeWatchers;
 
         protected Queue<TriggerInfo> pendingResizeTriggers;
         
         TriggerInfo currentResizeTrigger;
 
-        public TerminalStruct(SafeSharedObjects shared)
+        public TerminalStruct(SafeSharedObjects shared) : base(suffixes)
         {
             this.shared = shared;
-            resizeWatchers = new UniqueSetValue<UserDelegate>();
+            resizeWatchers = new UniqueSetValue();
             pendingResizeTriggers = new Queue<TriggerInfo>();
-
-            InitializeSuffixes();
 
             Shared.Screen.AddResizeNotifier(NotifyMeOfResize);
             if (Shared.UpdateHandler != null) Shared.UpdateHandler.AddFixedObserver(this);
@@ -119,47 +197,6 @@ namespace kOS.Safe.Encapsulation
         protected internal SafeSharedObjects Shared
         {
             get { return shared; }
-        }
-
-        private void InitializeSuffixes()
-        {
-            // TODO: Uncomment the following if IsOpen gets implemented later:
-            // AddSuffix("ISOPEN", new SetSuffix<BooleanValue>(() => IsOpen, Isopen = value, "true=open, false=closed.  You can set it to open/close the window."));
-            AddSuffix("HEIGHT", new ClampSetSuffix<ScalarValue>(() => Shared.Screen.RowCount,
-                                                                value => Shared.Screen.SetSize(value, Shared.Screen.ColumnCount),
-                                                                MINROWS,
-                                                                MAXROWS,
-                                                                "Get or Set the number of rows on the screen.  Value is limited to the range [" + MINROWS + "," + MAXROWS + "]"));
-            AddSuffix("WIDTH", new ClampSetSuffix<ScalarValue>(() => Shared.Screen.ColumnCount,
-                                                               value => Shared.Screen.SetSize(Shared.Screen.RowCount, value),
-                                                               MINCOLUMNS,
-                                                               MAXCOLUMNS,
-                                                               "Get or Set the number of columns on the screen.  Value is limited to the range [" + MINCOLUMNS + "," + MAXCOLUMNS + "]"));
-            AddSuffix("REVERSE", new SetSuffix<BooleanValue>(() => Shared.Screen.ReverseScreen,
-                                                             value => Shared.Screen.ReverseScreen = value,
-                                                             "Get or set the value of whether or not the terminal is in reversed mode."));
-            AddSuffix("VISUALBEEP", new SetSuffix<BooleanValue>(() => Shared.Screen.VisualBeep,
-                                                                value => Shared.Screen.VisualBeep = value,
-                                                                "Get or set the value of whether or not the terminal shows beeps silently with a visual flash."));
-            AddSuffix("BRIGHTNESS", new ClampSetSuffix<ScalarValue>(() => Shared.Screen.Brightness,
-                                                                    value => Shared.Screen.Brightness = (float)value,
-                                                                    0f,
-                                                                    1f,
-                                                                    "Screen Brightness, between 0.0 and 1.0"));
-            AddSuffix("CHARWIDTH", new ClampSetSuffix<ScalarValue>(() => Shared.Screen.CharacterPixelWidth,
-                                                                   CannotSetWidth,
-                                                                   MINCHARPIXELS,
-                                                                   MAXCHARPIXELS,
-                                                                   2,
-                                                                   "Character width on in-game terminal screen in pixels"));
-            AddSuffix("CHARHEIGHT", new ClampSetSuffix<ScalarValue>(() => Shared.Screen.CharacterPixelHeight,
-                                                                    value => Shared.Screen.CharacterPixelHeight = (int)value,
-                                                                    MINCHARPIXELS,
-                                                                    MAXCHARPIXELS,
-                                                                    2,
-                                                                    "Character height on in-game terminal screen in pixels"));
-            AddSuffix("RESIZEWATCHERS", new NoArgsSuffix<UniqueSetValue<UserDelegate>>(() => resizeWatchers));
-            AddSuffix("INPUT", new Suffix<TerminalInput>(GetTerminalInputInstance));
         }
 
         private void CannotSetWidth(ScalarValue newWidth)

@@ -9,30 +9,52 @@ using kOS.Safe.Serialization;
 namespace kOS.Safe.Encapsulation
 {
     [kOS.Safe.Utilities.KOSNomenclature("List")]
-    public class ListValue<T> : CollectionValue<T, IList<T>>, IIndexable
-        where T : Structure
+    public class ListValue : CollectionValue<IList<Structure>>, IIndexable
     {
+        private static readonly SuffixMap suffixes;
+
+        static ListValue()
+        {
+            suffixes = CollectionSuffixes<ListValue>();
+
+            suffixes.AddSuffix("COPY", new NoArgsSuffix<ListValue, ListValue>((list) => list.Copy));
+            suffixes.AddSuffix("ADD", new OneArgsVoidSuffix<ListValue, Structure>((list) => list.Add, Resources.ListAddDescription));
+            suffixes.AddSuffix("INSERT", new TwoArgsVoidSuffix<ListValue, ScalarValue, Structure>((list) => list.Insert));
+            suffixes.AddSuffix("REMOVE", new OneArgsVoidSuffix<ListValue, ScalarValue>((list) => (toRemove) => list.RemoveAt(toRemove)));
+            suffixes.AddSuffix("SUBLIST", new TwoArgsSuffix<ListValue, ListValue, ScalarValue, ScalarValue>((list) => list.SubListMethod));
+            suffixes.AddSuffix("JOIN", new OneArgsSuffix<ListValue, StringValue, StringValue>((list) => list.Join));
+        }
+
         public ListValue()
-            : this(new List<T>())
+            : this(new List<Structure>())
         {
         }
 
-        public ListValue(IEnumerable<T> listValue) : base("LIST", new List<T>(listValue))
+        public ListValue(IEnumerable<Structure> listValue) : base("LIST", new List<Structure>(listValue), suffixes)
         {
-            ListInitializeSuffixes();
         }
 
-        public void Add(T item)
+        public void Add(Structure item)
         {
             Collection.Add(item);
         }
 
-        public void CopyTo(T[] array, int arrayIndex)
+        public void Insert(ScalarValue index, Structure item)
+        {
+            Collection.Insert(index, item);
+        }
+
+        public ListValue Copy()
+        {
+            return new ListValue(this);
+        }
+
+        public void CopyTo(Structure[] array, int arrayIndex)
         {
             Collection.CopyTo(array, arrayIndex);
         }
 
-        public bool Remove(T item)
+        public bool Remove(Structure item)
         {
             return Collection.Remove(item);
         }
@@ -47,7 +69,7 @@ namespace kOS.Safe.Encapsulation
             Collection.RemoveAt(index);
         }
 
-        public T this[int index]
+        public Structure this[int index]
         {
             get { return Collection[index]; }
             set { Collection[index] = value; }
@@ -61,19 +83,9 @@ namespace kOS.Safe.Encapsulation
 
             foreach (object item in values)
             {
-                Collection.Add((T)FromPrimitive(item));
+                Collection.Add((Structure)FromPrimitive(item));
             }
         }
-
-        private void ListInitializeSuffixes()
-        {
-            AddSuffix("COPY",     new NoArgsSuffix<ListValue<T>>        (() => new ListValue<T>(this)));
-            AddSuffix("ADD",      new OneArgsSuffix<T>                  (toAdd => Collection.Add(toAdd), Resources.ListAddDescription));
-            AddSuffix("INSERT",   new TwoArgsSuffix<ScalarValue, T>     ((index, toAdd) => Collection.Insert(index, toAdd)));
-            AddSuffix("REMOVE",   new OneArgsSuffix<ScalarValue>        (toRemove => Collection.RemoveAt(toRemove)));
-            AddSuffix("SUBLIST",  new TwoArgsSuffix<ListValue, ScalarValue, ScalarValue>(SubListMethod));
-            AddSuffix("JOIN",     new OneArgsSuffix<StringValue, StringValue>(Join));
-       }
 
         // This test case was added to ensure there was an example method with more than 1 argument.
         private ListValue SubListMethod(ScalarValue start, ScalarValue runLength)
@@ -86,9 +98,9 @@ namespace kOS.Safe.Encapsulation
             return subList;
         }
 
-        public static ListValue<T> CreateList<TU>(IEnumerable<TU> list)
+        public static ListValue CreateList<TU>(IEnumerable<TU> list)
         {
-            return new ListValue<T>(list.Cast<T>());
+            return new ListValue(list.Cast<Structure>());
         }
 
         public Structure GetIndex(int index)
@@ -118,42 +130,17 @@ namespace kOS.Safe.Encapsulation
             {
                 throw new KOSException("The index must be an integer number");
             }
-            Collection[idx] = (T)value;
+            Collection[idx] = (Structure)value;
         }
 
         public void SetIndex(int index, Structure value)
         {
-            Collection[index] = (T)value;
+            Collection[index] = value;
         }
 
         private StringValue Join(StringValue separator)
         {
             return string.Join(separator, Collection.Select(i => i.ToString()).ToArray());
-        }
-    }
-
-    [kOS.Safe.Utilities.KOSNomenclature("List", KOSToCSharp = false)] // one-way because the generic templated ListValue<T> is the canonical one.  
-    public class ListValue : ListValue<Structure>
-    {
-        public ListValue()
-        {
-            InitializeSuffixes();
-        }
-
-        public ListValue(IEnumerable<Structure> toCopy)
-            : base(toCopy)
-        {
-            InitializeSuffixes();
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("COPY", new NoArgsSuffix<ListValue>(() => new ListValue(this)));
-        }
-
-        public new static ListValue CreateList<T>(IEnumerable<T> toCopy)
-        {
-            return new ListValue(toCopy.Select(x => FromPrimitiveWithAssert(x)));
         }
     }
 }

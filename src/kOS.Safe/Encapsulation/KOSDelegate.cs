@@ -15,31 +15,33 @@ namespace kOS.Safe.Encapsulation
     [kOS.Safe.Utilities.KOSNomenclature("Delegate")]
     public abstract class KOSDelegate : Structure
     {
+        protected static SuffixMap DelegateSuffixes<T>() where T : KOSDelegate
+        {
+            SuffixMap suffixes = StructureSuffixes<T>();
+
+            suffixes.AddSuffix("CALL", new VarArgsSuffix<T, Structure, Structure>((del) => del.CallPassingArgs));
+            suffixes.AddSuffix("BIND", new VarArgsSuffix<T, KOSDelegate, Structure>((del) => del.Bind));
+            suffixes.AddSuffix("ISDEAD", new NoArgsSuffix<T, BooleanValue>((del) => () => del.IsDead()));
+
+            return suffixes;
+        }
+
         protected IList<Structure> PreBoundArgs { get; set; }
 
         protected ICpu Cpu { get; set; }
 
-        protected KOSDelegate(ICpu cpu)
+        protected KOSDelegate(ICpu cpu, SuffixMap suffixes) : base(suffixes)
         {
             Cpu = cpu;
             PreBoundArgs = new List<Structure>();
-            InitializeSuffixes();
         }
 
-        protected KOSDelegate(KOSDelegate oldCopy)
+        protected KOSDelegate(KOSDelegate oldCopy, SuffixMap suffixes) : base(suffixes)
         {
             Cpu = oldCopy.Cpu;
             PreBoundArgs = new List<Structure>();
-            InitializeSuffixes();
             foreach (Structure ca in oldCopy.PreBoundArgs)
                 PreBoundArgs.Add(ca);
-        }
-
-        private void InitializeSuffixes()
-        {
-            AddSuffix("CALL", new VarArgsSuffix<Structure, Structure>(CallPassingArgs));
-            AddSuffix("BIND", new VarArgsSuffix<KOSDelegate, Structure>(Bind));
-            AddSuffix("ISDEAD", new NoArgsSuffix<BooleanValue>(() => (BooleanValue)IsDead()));
         }
 
         public void AddPreBoundArg(Structure arg)

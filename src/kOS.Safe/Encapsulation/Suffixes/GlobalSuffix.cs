@@ -1,7 +1,7 @@
 namespace kOS.Safe.Encapsulation.Suffixes
 {
 
-    public class StaticSuffix<TReturn> : SuffixBase where TReturn : Structure
+    public class StaticSuffix<T, TReturn> : SuffixBase where T : Structure where TReturn : Structure
     {
         private readonly StaticSuffixGetDlg<TReturn> getter;
 

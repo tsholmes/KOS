@@ -46,7 +46,8 @@ namespace kOS.CommandLine
             //worker.PushScript(simpleTest);
             //worker.PushScript(scalarAddBenchmark);
             //worker.PushScript(fib);
-            worker.PushScript("runpath(\"perf/sort.ks\").");
+            //worker.PushScript("runpath(\"perf/sort.ks\").");
+            worker.PushScript("runpath(\"perf/mergesort.ks\").");
             //worker.PushScript(string.Format(run, DateTime.Now.ToString("yyyy-MM-dd-HH-mm")));
             while (worker.GetMode() == Safe.Module.ProcessorModes.READY)
             {
